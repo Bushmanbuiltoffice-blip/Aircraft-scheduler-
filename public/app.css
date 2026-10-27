@@ -166,6 +166,19 @@ p { margin: 0.35rem 0; }
 .pill.grounded, .pill.cancelled { background: #fdecea; color: #6e221c; }
 .pill.external { background: #e7eef6; color: #16324f; }
 .pill.maint { background: #f8e4e0; color: #6e221c; }
+.pill.role-student { background: #efe7fb; color: #432874; }
+.pill.role-renter { background: #eef1f4; color: #243140; }
+.pill.role-instructor { background: #e5f4ec; color: #145233; }
+.pill.role-admin { background: #e7eef6; color: #16324f; }
+.instructor-expected {
+  background: #fff8e8;
+  border: 1px solid #e2c27a;
+  border-radius: 12px;
+  padding: 0.75rem;
+}
+.instructor-expected small { display: block; margin: 0.15rem 0 0.4rem; color: #6a4a08; }
+.pilot-lock { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+.pilot-lock strong { font-weight: 650; }
 .tail { font-family: var(--mono); letter-spacing: -0.03em; }
 
 .table-wrap { overflow-x: auto; }

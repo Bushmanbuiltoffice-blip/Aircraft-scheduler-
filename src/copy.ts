@@ -15,7 +15,10 @@ export const NOTICES: Record<string, string> = {
   "account-saved": "Your account is updated.",
   "password-saved": "Password updated.",
   "ical-reset": "Calendar link replaced. Old subscriptions will stop working.",
+  "person-removed": "Person removed. Their flight logs were not deleted or changed.",
 };
+
+export const STUDENT_SOLO_WARNING = "Students usually fly with an instructor. You can still book this solo.";
 
 export function pageNotice(query: string | undefined): string | null {
   if (!query) return null;

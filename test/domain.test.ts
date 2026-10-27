@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { hashPassword, verifyPassword } from "../src/auth";
-import { computeFlightCost, pilotEligibility, validateReservationWindow } from "../src/domain";
+import { booksOnlySelf, canBookDespiteEligibility, computeFlightCost, pilotEligibility, validateReservationWindow } from "../src/domain";
 import { buildIcal, escapeText } from "../src/ical";
 import { buildMonthCalendar } from "../src/board";
 import { addDays, clipToWindow, monthGrid, rangesOverlap, shiftMonth, todayInZone, zonedTimeToUtc } from "../src/time";
@@ -188,6 +188,18 @@ describe("month calendar", () => {
     expect(oct1?.items[0]?.className).toBe("maint");
     expect(oct1?.items[0]?.detail).toBe("Oil and filter change");
     expect(oct1?.items[0]?.time).toContain("6:00");
+  });
+});
+
+describe("student booking rules", () => {
+  it("treats a student like a pilot for eligibility and self-booking", () => {
+    expect(booksOnlySelf("student")).toBe(true);
+    expect(booksOnlySelf("renter")).toBe(true);
+    expect(booksOnlySelf("instructor")).toBe(false);
+    expect(booksOnlySelf("admin")).toBe(false);
+    expect(canBookDespiteEligibility("student", false)).toEqual(canBookDespiteEligibility("renter", false));
+    expect(canBookDespiteEligibility("student", true)).toEqual({ bypassMedical: false, bypassCheckout: false });
+    expect(canBookDespiteEligibility("instructor", false).bypassCheckout).toBe(true);
   });
 });
 

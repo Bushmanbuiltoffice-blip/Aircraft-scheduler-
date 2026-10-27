@@ -1,4 +1,4 @@
-import type { RateBasis } from "./types";
+import type { RateBasis, Role } from "./types";
 import { daysBetween } from "./time";
 
 export type CostInput = {
@@ -122,7 +122,12 @@ export function pilotEligibility(input: {
   return { ok: blocks.length === 0, blocks, warnings };
 }
 
-export function canBookDespiteEligibility(role: "admin" | "instructor" | "renter", override: boolean): {
+/** Pilots and students book only themselves and need a medical plus a checkout. */
+export function booksOnlySelf(role: Role): boolean {
+  return role === "renter" || role === "student";
+}
+
+export function canBookDespiteEligibility(role: Role, override: boolean): {
   bypassMedical: boolean;
   bypassCheckout: boolean;
 } {

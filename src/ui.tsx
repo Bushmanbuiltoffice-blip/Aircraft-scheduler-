@@ -1,6 +1,7 @@
 /** @jsxImportSource hono/jsx */
 import { html } from "hono/html";
 import type { Child } from "hono/jsx";
+import { booksOnlySelf } from "./domain";
 import { roleLabel } from "./format";
 import { FIELD_NAME, ORG_NAME, type Role } from "./types";
 
@@ -64,7 +65,7 @@ export function Layout(props: {
           <label class="nav-toggle" for="nav-check">Menu</label>
           <nav class="nav" aria-label="Primary">
             <span class="nav-user">{props.user.name}</span>
-            {NAV.filter((item) => item.href !== "/pilots" || props.user.role !== "renter").map((item) => (
+            {NAV.filter((item) => item.href !== "/pilots" || !booksOnlySelf(props.user.role)).map((item) => (
               <a class={navClass(props.path, item.href)} href={item.href} aria-current={navCurrent(props.path, item.href)}>
                 {item.label}
               </a>
@@ -175,6 +176,10 @@ export function Warnings(props: { warnings?: string[] }) {
       ))}
     </div>
   );
+}
+
+export function RolePill(props: { role: Role }) {
+  return <span class={`pill role-${props.role}`}>{roleLabel(props.role)}</span>;
 }
 
 export function SimpleMessage(props: { title: string; message: string }) {

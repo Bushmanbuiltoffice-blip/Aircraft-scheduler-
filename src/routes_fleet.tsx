@@ -2,6 +2,7 @@
 import type { Context, Hono } from "hono";
 import { emailError, hashPassword, newToken, normalizeEmail, passwordError, verifyPassword } from "./auth";
 import { pageNotice } from "./copy";
+import { booksOnlySelf } from "./domain";
 import {
   countAdmins,
   deleteCheckout,
@@ -20,6 +21,8 @@ import {
   listReservationsForUser,
   listReservationsOverlapping,
   listUsers,
+  personHistory,
+  removePerson,
   setAircraftStatus,
   updateAircraft,
   updateUser,
@@ -27,13 +30,13 @@ import {
 } from "./db";
 import { blankToNull, checked, field, isUuid, readForm, viewerOf } from "./http";
 import { parseDollarsToCents, parseMeter } from "./format";
-import { AccountPassword, PeoplePage, PersonFormPage, personToForm, type PersonFormValues } from "./pages_people";
+import { AccountPassword, DeletePersonPage, PeoplePage, PersonFormPage, personToForm, RemovedPersonPage, type PersonFormValues } from "./pages_people";
 import { AircraftFormPage, AircraftListPage, aircraftToForm, type AircraftFormValues } from "./pages_fleet";
 import { document, SimpleMessage } from "./ui";
 import { addDays, parseDay, parseLocalDateTime, todayInZone, zonedTimeToUtc } from "./time";
 import type { Aircraft, AircraftStatus, AppEnv, CertificateType, CheckoutStatus, MedicalClass, RateBasis, Role, User } from "./types";
 
-const ROLES = new Set<Role>(["admin", "instructor", "renter"]);
+const ROLES = new Set<Role>(["admin", "instructor", "renter", "student"]);
 const CERTS = new Set<CertificateType>(["student", "sport", "recreational", "private", "commercial", "atp", "none"]);
 const MEDICALS = new Set<MedicalClass>(["first", "second", "third", "basicmed", "none"]);
 
@@ -184,7 +187,7 @@ export function registerFleet(app: Hono<AppEnv>): void {
 
   app.get("/pilots", async (c) => {
     const user = mustUser(c);
-    if (user.role === "renter") return c.redirect("/account");
+    if (booksOnlySelf(user.role)) return c.redirect("/account");
     const today = todayInZone();
     const people = await listUsers(c.env.DB);
     const checkoutCounts = new Map<string, number>();
@@ -236,9 +239,33 @@ export function registerFleet(app: Hono<AppEnv>): void {
     const user = mustUser(c);
     const person = await getUserById(c.env.DB, c.req.param("id"));
     if (!person) return c.notFound();
-    if (user.role === "renter" && user.id !== person.id) return forbidden(c);
-    if (user.role === "renter") return c.redirect("/account");
+    if (booksOnlySelf(user.role) && user.id !== person.id) return forbidden(c);
+    if (booksOnlySelf(user.role)) return c.redirect("/account");
+    if (person.deletedAt) return removedPersonResponse(c, person);
     return personResponse(c, "edit", personToForm(person), [], person);
+  });
+
+  app.get("/pilots/:id/delete", async (c) => {
+    const user = mustUser(c);
+    if (user.role !== "admin") return forbidden(c);
+    const person = await getUserById(c.env.DB, c.req.param("id"));
+    if (!person) return c.notFound();
+    if (person.deletedAt) return removedPersonResponse(c, person);
+    return deletePersonResponse(c, user, person);
+  });
+
+  app.post("/pilots/:id/delete", async (c) => {
+    const user = mustUser(c);
+    if (user.role !== "admin") return forbidden(c);
+    const person = await getUserById(c.env.DB, c.req.param("id"));
+    if (!person) return c.notFound();
+    if (person.deletedAt) return removedPersonResponse(c, person);
+    const nowIso = new Date().toISOString();
+    const history = await personHistory(c.env.DB, person.id, nowIso);
+    const blocked = await removalBlock(c, user, person);
+    if (blocked.blockedSelf || blocked.blockedLastAdmin) return deletePersonResponse(c, user, person, history, blocked);
+    await removePerson(c.env.DB, person.id, nowIso);
+    return c.redirect("/pilots?notice=person-removed", 303);
   });
 
   app.post("/pilots/:id", async (c) => {
@@ -246,6 +273,7 @@ export function registerFleet(app: Hono<AppEnv>): void {
     if (user.role !== "admin") return forbidden(c);
     const person = await getUserById(c.env.DB, c.req.param("id"));
     if (!person) return c.notFound();
+    if (person.deletedAt) return removedPersonResponse(c, person);
     const parsed = await parsePerson(await readForm(c), { mode: "edit", actor: user, current: person });
     if (parsed.errors.length || !parsed.draft) return personResponse(c, "edit", parsed.values, parsed.errors, person);
     if (person.role === "admin" && parsed.draft.role !== "admin" && (await countAdmins(c.env.DB, person.id)) === 0) {
@@ -262,9 +290,9 @@ export function registerFleet(app: Hono<AppEnv>): void {
 
   app.post("/pilots/:id/checkouts", async (c) => {
     const user = mustUser(c);
-    if (user.role === "renter") return forbidden(c);
+    if (booksOnlySelf(user.role)) return forbidden(c);
     const person = await getUserById(c.env.DB, c.req.param("id"));
-    if (!person) return c.notFound();
+    if (!person || person.deletedAt) return c.notFound();
     const data = await readForm(c);
     const aircraft = await listAircraft(c.env.DB);
     const today = todayInZone();
@@ -415,13 +443,66 @@ async function personResponse(
         aircraft={aircraft}
         checkouts={checkouts}
         checkoutAction={person ? `/pilots/${person.id}/checkouts` : undefined}
-        canEditCheckouts={Boolean(person) && mode === "edit" && user.role !== "renter"}
+        canEditCheckouts={Boolean(person) && mode === "edit" && !booksOnlySelf(user.role)}
+        canDelete={Boolean(person) && mode === "edit" && user.role === "admin" && user.id !== person?.id && !person?.deletedAt}
+        personId={person?.id}
         upcoming={upcoming}
         logs={logs}
         icalUrl={icalUrl}
       />,
     ),
     errors.length ? 422 : 200,
+  );
+}
+
+async function removalBlock(c: Context<AppEnv>, actor: User, person: User): Promise<{ blockedSelf: boolean; blockedLastAdmin: boolean }> {
+  return {
+    blockedSelf: actor.id === person.id,
+    blockedLastAdmin: person.role === "admin" && (await countAdmins(c.env.DB, person.id)) === 0,
+  };
+}
+
+async function deletePersonResponse(
+  c: Context<AppEnv>,
+  actor: User,
+  person: User,
+  history?: { flightLogCount: number; reservationCount: number; futureReservationCount: number },
+  blocked?: { blockedSelf: boolean; blockedLastAdmin: boolean },
+): Promise<Response> {
+  const counts = history ?? (await personHistory(c.env.DB, person.id, new Date().toISOString()));
+  const block = blocked ?? (await removalBlock(c, actor, person));
+  return c.html(
+    document(
+      <DeletePersonPage
+        viewer={viewerOf(actor)}
+        path="/pilots"
+        usingDevSecret={c.get("usingDevSecret")}
+        person={person}
+        blockedSelf={block.blockedSelf}
+        blockedLastAdmin={block.blockedLastAdmin}
+        mode={counts.flightLogCount > 0 || counts.reservationCount > 0 ? "soft" : "hard"}
+        flightLogCount={counts.flightLogCount}
+        reservationCount={counts.reservationCount}
+        futureReservationCount={counts.futureReservationCount}
+        juanWarning={person.name.trim().toLowerCase() === "juan valdivia"}
+      />,
+    ),
+  );
+}
+
+async function removedPersonResponse(c: Context<AppEnv>, person: User): Promise<Response> {
+  const user = mustUser(c);
+  const logs = await listFlightLogs(c.env.DB, { instructorOrPilotId: person.id, limit: 20 });
+  return c.html(
+    document(
+      <RemovedPersonPage
+        viewer={viewerOf(user)}
+        path="/pilots"
+        usingDevSecret={c.get("usingDevSecret")}
+        person={person}
+        logs={logs}
+      />,
+    ),
   );
 }
 

@@ -2,7 +2,7 @@
 import { BILLED_OUTSIDE_LABEL, formatHours, formatMeter, formatMoney, statusLabel } from "./format";
 import { formatDateTime, formatTime } from "./time";
 import type { Aircraft, Checkout, FlightLogView, MaintenanceBlock, PilotBilling, ScheduleEntry } from "./types";
-import { Layout, PageHead, type Viewer } from "./ui";
+import { Layout, PageHead, RolePill, type Viewer } from "./ui";
 
 export function DashboardPage(props: {
   viewer: Viewer;
@@ -202,6 +202,7 @@ export function LogTable(props: { logs: FlightLogView[] }) {
               <td><a href={`/logs/${log.id}`}>{formatDateTime(log.createdAt)}</a></td>
               <td>
                 {log.pilotName}
+                {log.pilotRole === "student" ? <> <RolePill role="student" /></> : null}
                 {log.instructorName ? <small class="muted"> with {log.instructorName}</small> : null}
               </td>
               <td class="tail">{log.tailNumber}</td>

@@ -3,7 +3,7 @@ import { formatMeter, rateLabel, statusLabel } from "./format";
 import { formatDateTime, toDateTimeLocalValue } from "./time";
 import type { FlightLogView, ScheduleEntry } from "./types";
 import { FlightChargeCard, HistoricalDetails } from "./pages_logs";
-import { Layout, PageHead, Warnings, type Viewer } from "./ui";
+import { Layout, PageHead, RolePill, Warnings, type Viewer } from "./ui";
 
 export function ReservationPage(props: {
   viewer: Viewer;
@@ -34,7 +34,7 @@ export function ReservationPage(props: {
           <p class={`pill ${entry.status}`}>{statusLabel(entry.status)}</p>
           <h2>{formatDateTime(entry.startsAt)} – {formatDateTime(entry.endsAt)}</h2>
           <dl>
-            <div><dt>Pilot</dt><dd><a href={`/pilots/${entry.pilotId}`}>{entry.pilotName}</a></dd></div>
+            <div><dt>Pilot</dt><dd><a href={`/pilots/${entry.pilotId}`}>{entry.pilotName}</a>{entry.pilotRole === "student" ? <> <RolePill role="student" /></> : null}</dd></div>
             <div><dt>Instructor</dt><dd>{entry.instructorId ? <a href={`/pilots/${entry.instructorId}`}>{entry.instructorName}</a> : (entry.instructorName ?? "Solo")}</dd></div>
             <div><dt>Rate basis</dt><dd>{rateLabel(entry.rateBasis)}</dd></div>
             <div><dt>Aircraft</dt><dd><a class="tail" href={`/aircraft/${entry.aircraftId}`}>{entry.tailNumber}</a></dd></div>

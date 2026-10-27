@@ -6,7 +6,7 @@ export const SESSION_DAYS = 14;
 export const ORG_NAME = "Firehound Rental";
 export const FIELD_NAME = "Hobby Field (77S), Creswell";
 
-export type Role = "admin" | "instructor" | "renter";
+export type Role = "admin" | "instructor" | "renter" | "student";
 export type AircraftStatus = "available" | "grounded";
 export type RateBasis = "wet" | "dry";
 export type BillingStatus = "in_app" | "external";
@@ -51,6 +51,7 @@ export interface User {
   instructorRateCents: number | null;
   icalToken: string;
   createdAt: string;
+  deletedAt: string | null;
 }
 
 export interface Aircraft {
@@ -148,6 +149,7 @@ export type ScheduleEntry = {
   model: string;
   pilotId: string;
   pilotName: string;
+  pilotRole: Role;
   instructorId: string | null;
   instructorName: string | null;
   startsAt: string;
@@ -165,6 +167,7 @@ export type ScheduleEntry = {
 
 export type FlightLogView = FlightLog & {
   pilotName: string;
+  pilotRole: Role;
   instructorName: string | null;
   tailNumber: string;
   make: string;

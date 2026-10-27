@@ -2,7 +2,7 @@
 import { certificateLabel, centsToDollarInput, formatHours, formatMoney, medicalLabel, roleLabel } from "./format";
 import { formatDate, formatDateTime } from "./time";
 import type { Aircraft, Checkout, FlightLogView, Role, ScheduleEntry, User } from "./types";
-import { Errors, Layout, PageHead, type Viewer } from "./ui";
+import { Errors, Layout, PageHead, RolePill, type Viewer } from "./ui";
 import { LogTable as Logs } from "./pages_dash";
 
 export type PersonFormValues = {
@@ -30,7 +30,7 @@ export function PeoplePage(props: {
 }) {
   return (
     <Layout title="People" user={props.viewer} path={props.path} notice={props.notice} usingDevSecret={props.usingDevSecret}>
-      <PageHead title="People" lede="Pilots, instructors, and admins. Medical dates and aircraft checkouts live here.">
+      <PageHead title="People" lede="Pilots, students, instructors, and admins. Medical dates and aircraft checkouts live here.">
         {props.viewer.role === "admin" ? <a class="btn" href="/pilots/new">Add person</a> : null}
       </PageHead>
       <div class="table-wrap card">
@@ -42,13 +42,14 @@ export function PeoplePage(props: {
               <th>Certificate</th>
               <th>Medical</th>
               <th>Checkouts</th>
+              {props.viewer.role === "admin" ? <th></th> : null}
             </tr>
           </thead>
           <tbody>
             {props.people.map((person) => (
               <tr>
                 <td><a href={`/pilots/${person.id}`}>{person.name}</a><small class="muted">{person.email || "No email yet"}</small></td>
-                <td>{roleLabel(person.role)}</td>
+                <td><RolePill role={person.role} /></td>
                 <td>{certificateLabel(person.certificateType)}</td>
                 <td>
                   <span class={person.medicalState === "expired" ? "pill grounded" : person.medicalState === "soon" ? "pill out" : "pill available"}>
@@ -56,6 +57,9 @@ export function PeoplePage(props: {
                   </span>
                 </td>
                 <td>{person.checkoutCount}</td>
+                {props.viewer.role === "admin" ? (
+                  <td>{person.id === props.viewer.id ? null : <a href={`/pilots/${person.id}/delete`}>Delete</a>}</td>
+                ) : null}
               </tr>
             ))}
           </tbody>
@@ -84,6 +88,8 @@ export function PersonFormPage(props: {
   upcoming?: ScheduleEntry[];
   logs?: FlightLogView[];
   icalUrl?: string | null;
+  canDelete?: boolean;
+  personId?: string;
 }) {
   return (
     <Layout title={props.values.name || "Person"} user={props.viewer} path={props.path} notice={props.notice} usingDevSecret={props.usingDevSecret}>
@@ -110,6 +116,7 @@ export function PersonFormPage(props: {
               Role
               <select name="role">
                 <option value="renter" selected={props.values.role === "renter"}>Pilot</option>
+                <option value="student" selected={props.values.role === "student"}>Student</option>
                 <option value="instructor" selected={props.values.role === "instructor"}>Instructor</option>
                 <option value="admin" selected={props.values.role === "admin"}>Admin</option>
               </select>
@@ -159,12 +166,13 @@ export function PersonFormPage(props: {
         <div class="actions">
           <button class="btn" type="submit">Save</button>
           {props.mode === "self" ? <a class="btn secondary" href="/account/password">Change password</a> : null}
+          {props.canDelete && props.personId ? <a class="btn danger" href={`/pilots/${props.personId}/delete`}>Delete</a> : null}
         </div>
       </form>
       {props.canEditCheckouts && props.aircraft && props.checkoutAction ? (
         <section class="card card-pad">
           <h2>Aircraft checkouts</h2>
-          <p class="muted">Pilots can book themselves only in aircraft with a current checkout. Instructors can still schedule a checkout ride; the board will warn them.</p>
+          <p class="muted">Pilots and students can book themselves only in aircraft with a current checkout. Instructors can still schedule a checkout ride; the board will warn them.</p>
           <form method="post" action={props.checkoutAction} class="stack">
             {props.aircraft.map((aircraft) => {
               const checkout = props.checkouts?.find((item) => item.aircraftId === aircraft.id);
@@ -223,6 +231,90 @@ export function PersonFormPage(props: {
       ) : null}
     </Layout>
   );
+}
+
+export function RemovedPersonPage(props: {
+  viewer: Viewer;
+  path: string;
+  usingDevSecret: boolean;
+  person: User;
+  logs: FlightLogView[];
+}) {
+  return (
+    <Layout title={props.person.name} user={props.viewer} path={props.path} usingDevSecret={props.usingDevSecret}>
+      <PageHead title={props.person.name} lede="Removed from the active roster.">
+        <RolePill role={props.person.role} />
+        <a class="btn secondary" href="/pilots">All people</a>
+      </PageHead>
+      <section class="card card-pad stack">
+        <p>This person was removed{props.person.deletedAt ? ` on ${formatDateTime(props.person.deletedAt)}` : ""}.</p>
+        <p>Deleting a person never deletes or alters their flight logs. Past flight logs keep showing their name.</p>
+      </section>
+      {props.logs.length > 0 ? (
+        <section class="card">
+          <header class="section-head pad"><h2>Flight logs</h2></header>
+          <Logs logs={props.logs} />
+        </section>
+      ) : null}
+    </Layout>
+  );
+}
+
+export function DeletePersonPage(props: {
+  viewer: Viewer;
+  path: string;
+  usingDevSecret: boolean;
+  person: User;
+  blockedSelf: boolean;
+  blockedLastAdmin: boolean;
+  mode: "hard" | "soft";
+  flightLogCount: number;
+  reservationCount: number;
+  futureReservationCount: number;
+  juanWarning: boolean;
+}) {
+  const future = props.futureReservationCount;
+  return (
+    <Layout title={`Remove ${props.person.name}`} user={props.viewer} path={props.path} usingDevSecret={props.usingDevSecret}>
+      <PageHead title={`Remove ${props.person.name}?`} lede={roleLabel(props.person.role)}>
+        <a class="btn secondary" href={`/pilots/${props.person.id}`}>Back</a>
+      </PageHead>
+      <section class="card card-pad stack">
+        <p>Deleting a person never deletes or alters their flight logs. Past flight logs keep showing their name.</p>
+        {props.juanWarning ? <p class="alert warn" role="status">Juan Valdivia is an instructor. You can remove him. His past flight logs stay on the books with his name.</p> : null}
+        {props.blockedSelf ? <p class="alert" role="alert">You cannot remove your own account.</p> : null}
+        {props.blockedLastAdmin ? <p class="alert" role="alert">This is the last admin. Add another admin before removing this account.</p> : null}
+        {props.blockedSelf || props.blockedLastAdmin ? null : props.mode === "hard" ? (
+          <p>This person has no flight logs and no reservations, so the account will be removed completely. There are no flight logs to change.</p>
+        ) : (
+          <>
+            <p>
+              This person has {countPhrase(props.flightLogCount, "flight log", "flight logs")} and {countPhrase(props.reservationCount, "reservation", "reservations")}.
+              They will be hidden from People, pilot lists, and billing. The flight log rows stay as they are, including the name.
+            </p>
+            <p>
+              {future === 0
+                ? "No future reservations will be cancelled."
+                : `${countPhrase(future, "future reservation", "future reservations")} will be cancelled.`}
+              {props.reservationCount > future ? " Reservations that have already started are left as they are." : ""}
+            </p>
+          </>
+        )}
+        {props.blockedSelf || props.blockedLastAdmin ? null : (
+          <form method="post" action={`/pilots/${props.person.id}/delete`}>
+            <div class="actions">
+              <button class="btn danger" type="submit">Remove this person</button>
+              <a class="btn secondary" href="/pilots">Cancel</a>
+            </div>
+          </form>
+        )}
+      </section>
+    </Layout>
+  );
+}
+
+function countPhrase(count: number, singular: string, plural: string): string {
+  return `${count} ${count === 1 ? singular : plural}`;
 }
 
 export function AccountPassword(props: { viewer: Viewer; path: string; usingDevSecret: boolean; error?: string | null }) {

@@ -30,6 +30,7 @@ type UserRow = {
   instructor_rate_cents: number | null;
   ical_token: string;
   created_at: string;
+  deleted_at: string | null;
 };
 
 type AircraftRow = {
@@ -83,6 +84,7 @@ export function mapUser(row: UserRow): User {
     instructorRateCents: row.instructor_rate_cents,
     icalToken: row.ical_token,
     createdAt: row.created_at,
+    deletedAt: row.deleted_at ?? null,
   };
 }
 
@@ -139,7 +141,7 @@ export async function insertAdminIfNone(db: D1Database, user: NewUser): Promise<
         medical_class, medical_expiration, instructor_rate_cents, ical_token, created_at
       )
       SELECT ?, ?, ?, ?, 'admin', ?, ?, ?, ?, ?, ?, ?, ?
-      WHERE NOT EXISTS (SELECT 1 FROM users WHERE role = 'admin')`,
+      WHERE NOT EXISTS (SELECT 1 FROM users WHERE role = 'admin' AND deleted_at IS NULL)`,
     )
     .bind(
       user.id,
@@ -161,13 +163,16 @@ export async function insertAdminIfNone(db: D1Database, user: NewUser): Promise<
 
 export async function countAdmins(db: D1Database, exceptId?: string): Promise<number> {
   const row = exceptId
-    ? await db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND id != ?").bind(exceptId).first<{ n: number }>()
-    : await db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin'").first<{ n: number }>();
+    ? await db
+        .prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND deleted_at IS NULL AND id != ?")
+        .bind(exceptId)
+        .first<{ n: number }>()
+    : await db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND deleted_at IS NULL").first<{ n: number }>();
   return Number(row?.n ?? 0);
 }
 
 export async function getUserByEmail(db: D1Database, email: string): Promise<User | null> {
-  const row = await db.prepare("SELECT * FROM users WHERE email = ?").bind(email).first<UserRow>();
+  const row = await db.prepare("SELECT * FROM users WHERE email = ? AND deleted_at IS NULL").bind(email).first<UserRow>();
   return row ? mapUser(row) : null;
 }
 
@@ -177,18 +182,86 @@ export async function getUserById(db: D1Database, id: string): Promise<User | nu
 }
 
 export async function getUserByIcalToken(db: D1Database, token: string): Promise<User | null> {
-  const row = await db.prepare("SELECT * FROM users WHERE ical_token = ?").bind(token).first<UserRow>();
+  const row = await db.prepare("SELECT * FROM users WHERE ical_token = ? AND deleted_at IS NULL").bind(token).first<UserRow>();
   return row ? mapUser(row) : null;
 }
 
 export async function listUsers(db: D1Database): Promise<User[]> {
-  const { results } = await db.prepare("SELECT * FROM users ORDER BY role = 'admin' DESC, role = 'instructor' DESC, name COLLATE NOCASE").all<UserRow>();
+  const { results } = await db
+    .prepare("SELECT * FROM users WHERE deleted_at IS NULL ORDER BY role = 'admin' DESC, role = 'instructor' DESC, name COLLATE NOCASE")
+    .all<UserRow>();
   return results.map(mapUser);
 }
 
 export async function listInstructors(db: D1Database): Promise<User[]> {
-  const { results } = await db.prepare("SELECT * FROM users WHERE role = 'instructor' ORDER BY name COLLATE NOCASE").all<UserRow>();
+  const { results } = await db
+    .prepare("SELECT * FROM users WHERE role = 'instructor' AND deleted_at IS NULL ORDER BY name COLLATE NOCASE")
+    .all<UserRow>();
   return results.map(mapUser);
+}
+
+export type PersonHistory = {
+  flightLogCount: number;
+  reservationCount: number;
+  futureReservationCount: number;
+};
+
+/** Counts history used to decide hard vs soft removal. Does not read or write flight log columns besides the count. */
+export async function personHistory(db: D1Database, personId: string, nowIso: string): Promise<PersonHistory> {
+  const logs = await db
+    .prepare("SELECT COUNT(*) AS n FROM flight_logs WHERE pilot_id = ? OR instructor_id = ?")
+    .bind(personId, personId)
+    .first<{ n: number }>();
+  const reservations = await db
+    .prepare("SELECT COUNT(*) AS n FROM reservations WHERE pilot_id = ? OR instructor_id = ?")
+    .bind(personId, personId)
+    .first<{ n: number }>();
+  const future = await db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM reservations
+       WHERE status IN ('scheduled', 'checked_out') AND starts_at > ? AND (pilot_id = ? OR instructor_id = ?)`,
+    )
+    .bind(nowIso, personId, personId)
+    .first<{ n: number }>();
+  return {
+    flightLogCount: Number(logs?.n ?? 0),
+    reservationCount: Number(reservations?.n ?? 0),
+    futureReservationCount: Number(future?.n ?? 0),
+  };
+}
+
+/**
+ * Remove a person from the active roster.
+ * Flight logs are never deleted or updated. A person with any flight log or
+ * reservation is soft-deleted (deleted_at) so past logs keep their name.
+ * Someone with neither is hard-deleted. Future reservations that have not
+ * started are cancelled. Sessions are invalidated.
+ */
+export async function removePerson(db: D1Database, personId: string, nowIso: string): Promise<"hard" | "soft"> {
+  const hard = await db
+    .prepare(
+      `DELETE FROM users
+       WHERE id = ? AND deleted_at IS NULL
+         AND NOT EXISTS (SELECT 1 FROM flight_logs WHERE pilot_id = users.id OR instructor_id = users.id)
+         AND NOT EXISTS (SELECT 1 FROM reservations WHERE pilot_id = users.id OR instructor_id = users.id)`,
+    )
+    .bind(personId)
+    .run();
+  if (Number(hard.meta.changes ?? 0) > 0) return "hard";
+  const note = "Cancelled because this person was removed. Flight logs were not changed.";
+  await db.batch([
+    db.prepare("UPDATE users SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL").bind(nowIso, personId),
+    db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(personId),
+    db
+      .prepare(
+        `UPDATE reservations
+         SET status = 'cancelled', cancelled_at = ?, updated_at = ?,
+             notes = CASE WHEN notes IS NULL OR notes = '' THEN ? ELSE notes || char(10) || ? END
+         WHERE status IN ('scheduled', 'checked_out') AND starts_at > ? AND (pilot_id = ? OR instructor_id = ?)`,
+      )
+      .bind(nowIso, nowIso, note, note, nowIso, personId, personId),
+  ]);
+  return "soft";
 }
 
 export type NewUser = {
@@ -276,7 +349,7 @@ export async function userForSession(db: D1Database, token: string, secret: stri
     .prepare(
       `SELECT u.* FROM sessions s
        JOIN users u ON u.id = s.user_id
-       WHERE s.token_hash = ? AND s.expires_at > ?`,
+       WHERE s.token_hash = ? AND s.expires_at > ? AND u.deleted_at IS NULL`,
     )
     .bind(await sessionTokenHash(token, secret), new Date().toISOString())
     .first<UserRow>();
@@ -468,6 +541,7 @@ function mapCheckout(row: CheckoutRow): Checkout {
 const RESERVATION_JOIN = `
   SELECT r.*, a.tail_number, a.make, a.model,
          p.name AS pilot_name,
+         p.role AS pilot_role,
          COALESCE(i.name, f.instructor_name) AS instructor_name
   FROM reservations r
   JOIN aircraft a ON a.id = r.aircraft_id
@@ -481,6 +555,7 @@ type ScheduleRow = ReservationRow & {
   make: string;
   model: string;
   pilot_name: string;
+  pilot_role: Role;
   instructor_name: string | null;
 };
 
@@ -491,6 +566,7 @@ function mapSchedule(row: ScheduleRow): ScheduleEntry {
     make: row.make,
     model: row.model,
     pilotName: row.pilot_name,
+    pilotRole: row.pilot_role,
     instructorName: row.instructor_name,
   };
 }
@@ -866,7 +942,7 @@ const FLIGHT_LOG_SELECT = `
   f.ground_hours, f.aircraft_paid, f.instructor_paid, f.maintenance_flight,
   f.fuel_added_gal, f.oil_added_qt, f.rental_type, f.imported,
   f.instructor_name AS guest_instructor_name, f.billing_status, f.billing_note,
-  p.name AS pilot_name, i.name AS linked_instructor_name, a.tail_number, a.make, a.model
+  p.name AS pilot_name, p.role AS pilot_role, i.name AS linked_instructor_name, a.tail_number, a.make, a.model
 `;
 
 export async function getFlightLogByReservation(db: D1Database, reservationId: string): Promise<FlightLogView | null> {
@@ -961,6 +1037,7 @@ type FlightLogRow = {
   billing_status: string;
   billing_note: string | null;
   pilot_name: string;
+  pilot_role: Role;
   linked_instructor_name: string | null;
   tail_number: string;
   make: string;
@@ -1001,6 +1078,7 @@ function mapFlightLog(row: FlightLogRow): FlightLogView {
     billingStatus,
     billingNote: row.billing_note,
     pilotName: row.pilot_name,
+    pilotRole: row.pilot_role,
     instructorName: row.linked_instructor_name ?? guestInstructorName,
     tailNumber: row.tail_number,
     make: row.make,
@@ -1017,6 +1095,7 @@ export async function billingByPilot(db: D1Database): Promise<PilotBilling[]> {
               COALESCE(SUM(f.total_cost_cents), 0) AS total_cents
        FROM users u
        JOIN flight_logs f ON f.pilot_id = u.id AND f.billing_status != 'external'
+       WHERE u.deleted_at IS NULL
        GROUP BY u.id
        ORDER BY total_cents DESC, u.name`,
     )

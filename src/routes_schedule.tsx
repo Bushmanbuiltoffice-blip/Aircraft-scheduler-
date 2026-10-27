@@ -1,11 +1,11 @@
 /** @jsxImportSource hono/jsx */
 import type { Context, Hono } from "hono";
 import { RESOURCE_TONES, buildDayBoard, buildMonthCalendar, buildWeekBoard, type BoardEvent, type BoardResource, type MonthEntry } from "./board";
-import { canBookDespiteEligibility, computeFlightCost, eligibilityAllowsBooking, pilotEligibility, validateReservationWindow } from "./domain";
+import { booksOnlySelf, canBookDespiteEligibility, computeFlightCost, eligibilityAllowsBooking, pilotEligibility, validateReservationWindow } from "./domain";
 import { createEmailSender, reservationMessage, safeSend } from "./email";
 import { formatMoney, parseMeter } from "./format";
 import { buildIcal, type IcalEvent } from "./ical";
-import { clashMessage, pageNotice } from "./copy";
+import { STUDENT_SOLO_WARNING, clashMessage, pageNotice } from "./copy";
 import {
   billingByPilot,
   cancelReservation,
@@ -170,7 +170,7 @@ export function registerSchedule(app: Hono<AppEnv>): void {
       cancelHref: "/schedule",
       values: {
         aircraftId: selected?.id ?? "",
-        pilotId: user.role === "renter" ? user.id : "",
+        pilotId: booksOnlySelf(user.role) ? user.id : "",
         instructorId: c.req.query("instructor") ?? "",
         startsAt: `${date}T09:00`,
         endsAt: `${date}T11:00`,
@@ -379,7 +379,7 @@ function medicalBannerFor(user: User, today: string): string | null {
 }
 
 async function bookablePilots(c: Context<AppEnv>, user: User): Promise<User[]> {
-  if (user.role === "renter") return [user];
+  if (booksOnlySelf(user.role)) return [user];
   return listUsers(c.env.DB);
 }
 
@@ -442,7 +442,7 @@ async function renderBookingForm(
         aircraft={input.aircraft}
         pilots={input.pilots}
         instructors={input.instructors}
-        lockPilot={user.role === "renter"}
+        lockPilot={booksOnlySelf(user.role)}
       />,
     ),
     input.errors.length ? 422 : 200,
@@ -476,6 +476,7 @@ async function renderReservation(c: Context<AppEnv>, id: string, actionError: st
           }).warnings,
         )
       : [];
+  if (pilot?.role === "student" && !entry.instructorId && entry.status !== "cancelled") warnings.push(STUDENT_SOLO_WARNING);
   return c.html(
     document(
       <ReservationPage
@@ -516,7 +517,7 @@ async function saveBooking(c: Context<AppEnv>, existingId: string | null): Promi
   }
   const values: ReservationFormValues = {
     aircraftId: field(data, "aircraft_id"),
-    pilotId: user.role === "renter" ? user.id : field(data, "pilot_id"),
+    pilotId: booksOnlySelf(user.role) ? user.id : field(data, "pilot_id"),
     instructorId: field(data, "instructor_id"),
     startsAt: field(data, "starts_at").slice(0, 16),
     endsAt: field(data, "ends_at").slice(0, 16),
@@ -540,7 +541,7 @@ async function saveBooking(c: Context<AppEnv>, existingId: string | null): Promi
   const aircraft = aircraftList.find((item) => item.id === values.aircraftId);
   const pilot = pilots.find((item) => item.id === values.pilotId) ?? (await getUserById(c.env.DB, values.pilotId));
   if (!aircraft) errors.push("Choose an aircraft.");
-  if (!pilot || (user.role === "renter" && pilot.id !== user.id)) errors.push("Choose a pilot.");
+  if (!pilot || pilot.deletedAt || (booksOnlySelf(user.role) && pilot.id !== user.id)) errors.push("Choose a pilot.");
   let instructor: User | null = null;
   if (values.instructorId) {
     instructor = instructors.find((item) => item.id === values.instructorId) ?? null;

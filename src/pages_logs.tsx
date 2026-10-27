@@ -1,9 +1,9 @@
 /** @jsxImportSource hono/jsx */
-import { BILLED_OUTSIDE_LABEL, formatHours, formatMeter, formatMoney, formatQuantity, paperPaidLabel, rateLabel } from "./format";
+import { BILLED_OUTSIDE_LABEL, formatHours, formatMeter, formatMoney, formatQuantity, paperPaidLabel, rateLabel, roleLabel } from "./format";
 import { formatDateTime } from "./time";
 import type { FlightLogView, User } from "./types";
 import { LogTable } from "./pages_dash";
-import { Layout, PageHead, type Viewer } from "./ui";
+import { Layout, PageHead, RolePill, type Viewer } from "./ui";
 
 export function LogsPage(props: {
   viewer: Viewer;
@@ -23,7 +23,7 @@ export function LogsPage(props: {
             <select name="pilot">
               <option value="">Everyone</option>
               {props.pilots.map((pilot) => (
-                <option value={pilot.id} selected={pilot.id === props.pilotId}>{pilot.name}</option>
+                <option value={pilot.id} selected={pilot.id === props.pilotId}>{pilot.name} · {roleLabel(pilot.role)}</option>
               ))}
             </select>
           </label>
@@ -46,7 +46,7 @@ export function LogDetailPage(props: { viewer: Viewer; path: string; usingDevSec
       </PageHead>
       <section class="card card-pad detail-grid">
         <dl>
-          <div><dt>Pilot</dt><dd><a href={`/pilots/${log.pilotId}`}>{log.pilotName}</a></dd></div>
+          <div><dt>Pilot</dt><dd><a href={`/pilots/${log.pilotId}`}>{log.pilotName}</a>{log.pilotRole === "student" ? <> <RolePill role="student" /></> : null}</dd></div>
           <div><dt>Instructor</dt><dd>{log.instructorId ? <a href={`/pilots/${log.instructorId}`}>{log.instructorName}</a> : (log.instructorName ?? "Solo")}</dd></div>
           <div><dt>Aircraft</dt><dd>{log.make} {log.model}</dd></div>
           {log.billingStatus === "external" ? null : (

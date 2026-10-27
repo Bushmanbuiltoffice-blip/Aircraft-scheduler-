@@ -42,6 +42,7 @@ export function formatHours(hours: number): string {
 export function roleLabel(role: Role): string {
   if (role === "admin") return "Admin";
   if (role === "instructor") return "Instructor";
+  if (role === "student") return "Student";
   return "Pilot";
 }
 

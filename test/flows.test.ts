@@ -39,6 +39,7 @@ async function makeUser(partial: Partial<User> & Pick<User, "email" | "name" | "
     instructorRateCents: partial.instructorRateCents ?? (partial.role === "instructor" ? 7500 : null),
     icalToken: partial.icalToken ?? newToken(),
     createdAt: new Date().toISOString(),
+    deletedAt: null,
   };
   await insertUser(db(), { ...user });
   return user;

@@ -1,8 +1,10 @@
 /** @jsxImportSource hono/jsx */
 import type { DayLane, MonthDay, WeekCellItem } from "./board";
+import { STUDENT_SOLO_WARNING } from "./copy";
+import { roleLabel } from "./format";
 import { DAY_END_HOUR, DAY_START_HOUR, addDays, formatDayLabel, formatLongDay, formatMonthLabel, shiftMonth } from "./time";
 import type { Aircraft, RateBasis, User } from "./types";
-import { Errors, Layout, PageHead, Warnings, type Viewer } from "./ui";
+import { Errors, Layout, PageHead, RolePill, Warnings, type Viewer } from "./ui";
 
 export function SchedulePage(props: {
   viewer: Viewer;
@@ -253,13 +255,23 @@ export function ReservationFormPage(props: {
   instructors: User[];
   lockPilot: boolean;
 }) {
+  const selectedPilot = props.pilots.find((pilot) => pilot.id === props.values.pilotId);
+  const pilotRole = props.lockPilot ? props.viewer.role : selectedPilot?.role;
+  const expectInstructor = pilotRole === "student";
+  const soloStudent = expectInstructor && !props.values.instructorId;
   return (
     <Layout title={props.mode === "create" ? "New reservation" : "Edit reservation"} user={props.viewer} path={props.path} usingDevSecret={props.usingDevSecret}>
       <PageHead
         title={props.mode === "create" ? "New reservation" : "Edit reservation"}
         lede="Price is calculated from Hobbs at check-in, not from the length of this block."
       />
-      <form method="post" action={props.action} class="card card-pad stack">
+      <form
+        id="booking-form"
+        method="post"
+        action={props.action}
+        class="card card-pad stack"
+        data-pilot-role={props.lockPilot ? props.viewer.role : undefined}
+      >
         <Errors errors={props.errors} />
         <Warnings warnings={props.warnings} />
         <div class="fields">
@@ -276,23 +288,29 @@ export function ReservationFormPage(props: {
             </select>
           </label>
           {props.lockPilot ? (
-            <input type="hidden" name="pilot_id" value={props.viewer.id} />
+            <div class="pilot-lock">
+              <span class="muted">Pilot</span>
+              <strong>{props.viewer.name}</strong>
+              <RolePill role={props.viewer.role} />
+              <input type="hidden" name="pilot_id" value={props.viewer.id} />
+            </div>
           ) : (
             <label>
               Pilot
-              <select name="pilot_id" required>
+              <select name="pilot_id" id="pilot_id" required>
                 <option value="">Select pilot</option>
                 {props.pilots.map((pilot) => (
-                  <option value={pilot.id} selected={pilot.id === props.values.pilotId}>
-                    {pilot.name} · {pilot.role === "renter" ? "Pilot" : pilot.role}
+                  <option value={pilot.id} data-role={pilot.role} selected={pilot.id === props.values.pilotId}>
+                    {pilot.name} · {roleLabel(pilot.role)}
                   </option>
                 ))}
               </select>
             </label>
           )}
-          <label>
+          <label id="instructor-field" class={expectInstructor ? "instructor-expected wide" : undefined}>
             Instructor
-            <select name="instructor_id">
+            {expectInstructor ? <small>Students usually fly with an instructor. Choose one here, or leave the flight solo.</small> : null}
+            <select name="instructor_id" id="instructor_id">
               <option value="">Solo / no instructor</option>
               {props.instructors.map((instructor) => (
                 <option value={instructor.id} selected={instructor.id === props.values.instructorId}>
@@ -300,6 +318,7 @@ export function ReservationFormPage(props: {
                 </option>
               ))}
             </select>
+            <p id="student-solo-warning" class="alert warn" role="status" hidden={!soloStudent}>{STUDENT_SOLO_WARNING}</p>
           </label>
           <label>
             Rate
@@ -331,6 +350,34 @@ export function ReservationFormPage(props: {
           <button class="btn" type="submit">{props.mode === "create" ? "Save reservation" : "Save changes"}</button>
           <a class="btn secondary" href={props.cancelHref}>Cancel</a>
         </div>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function () {
+  var form = document.getElementById("booking-form");
+  var pilot = document.getElementById("pilot_id");
+  var instructor = document.getElementById("instructor_id");
+  var field = document.getElementById("instructor-field");
+  var warn = document.getElementById("student-solo-warning");
+  if (!form || !instructor || !field || !warn) return;
+  function role() {
+    if (pilot && pilot.selectedOptions && pilot.selectedOptions.length) {
+      return pilot.selectedOptions[0].getAttribute("data-role") || "";
+    }
+    return form.getAttribute("data-pilot-role") || "";
+  }
+  function sync() {
+    var student = role() === "student";
+    field.classList.toggle("instructor-expected", student);
+    field.classList.toggle("wide", student);
+    if (student && instructor.value === "") warn.removeAttribute("hidden");
+    else warn.setAttribute("hidden", "");
+  }
+  if (pilot) pilot.addEventListener("change", sync);
+  instructor.addEventListener("change", sync);
+  sync();
+})();`,
+          }}
+        />
       </form>
     </Layout>
   );
