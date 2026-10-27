@@ -2,6 +2,8 @@
 
 Rampboard is the scheduling desk for the rental airplane and instructor at Hobby Field (77S) in Creswell, Oregon. It keeps the airplane, instructor time, and pilot reservations in one place, and it runs entirely on Cloudflare.
 
+The live site is [https://rampboard.bushmanbuiltoffice.workers.dev](https://rampboard.bushmanbuiltoffice.workers.dev).
+
 Times on the board are Pacific time (`America/Los_Angeles`).
 
 The name on the screen is **Bushman Aviation**. That was a placeholder. Every page, calendar feed, and notification reads one setting, `ORG_NAME`, in `src/types.ts`. Change that one string to the name you want, save the file, then start the site again or deploy. You do not need to change it anywhere else.
@@ -78,7 +80,7 @@ Stop the app with Ctrl+C in the same terminal.
 
 ## Put it on Cloudflare
 
-Do this once, from the project folder, on a computer that has your Cloudflare API token. Nothing in this repository is already deployed. The free plan is enough. `wrangler.jsonc` does not ask for a CPU limit the free plan would reject.
+The live site is [https://rampboard.bushmanbuiltoffice.workers.dev](https://rampboard.bushmanbuiltoffice.workers.dev). The production D1 database id is already in `wrangler.jsonc`. The free plan is enough. `wrangler.jsonc` does not ask for a CPU limit the free plan would reject.
 
 The token needs permission to edit Workers scripts, edit D1, and read the account. Create it under My Profile → API Tokens. Do not commit the token, and do not paste it into the chat.
 
@@ -105,7 +107,7 @@ You can also do the same steps by hand:
 
 1. `npx wrangler login`
 2. `npx wrangler d1 create rampboard`
-3. Paste the printed `database_id` into `wrangler.jsonc` in place of `00000000-0000-0000-0000-000000000000`. `scripts/deploy-prod.sh` does this for you.
+3. The production `database_id` is already in `wrangler.jsonc`. `scripts/deploy-prod.sh` writes it there when it creates the database.
 4. `npm run db:migrate:remote`
 5. `npm run db:seed:prod -- --yes` (only on an empty fleet)
 6. `npx wrangler secret put SESSION_SECRET` with a long random string. Changing it later signs everyone out. Passwords stay the same.

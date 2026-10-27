@@ -17,9 +17,8 @@
     {
       "binding": "DB",
       "database_name": "rampboard",
-      // scripts/deploy-prod.sh replaces this when it creates the database.
-      // To fill it in by hand, paste the id from `npx wrangler d1 create rampboard`.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      // Production D1 database rampboard.
+      "database_id": "42ed7f5a-9174-427d-98fa-f7e3b111eb9a",
       "migrations_dir": "migrations"
     }
   ]
