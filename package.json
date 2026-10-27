@@ -8,7 +8,7 @@
     "dev": "wrangler dev",
     "start": "wrangler dev",
     "deploy": "wrangler deploy",
-    "test": "vitest run",
+    "test": "vitest run && node --test scripts/database-id.check.mjs",
     "typecheck": "tsc --noEmit",
     "db:migrate:local": "wrangler d1 migrations apply rampboard --local",
     "db:migrate:remote": "wrangler d1 migrations apply rampboard --remote",

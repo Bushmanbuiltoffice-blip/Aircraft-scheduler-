@@ -157,19 +157,7 @@ else
   echo "D1 database rampboard already exists."
 fi
 
-node --input-type=module -e '
-  import { readFileSync, writeFileSync } from "node:fs";
-  const id = process.argv[1];
-  const path = "wrangler.jsonc";
-  const text = readFileSync(path, "utf8");
-  const next = text.replace(/"database_id"\s*:\s*"[0-9a-fA-F-]{36}"/, `"database_id": "${id}"`);
-  if (next === text) {
-    console.error("Could not find database_id in wrangler.jsonc.");
-    process.exit(1);
-  }
-  if (next !== text) writeFileSync(path, next);
-  console.log(`Saved database id ${id} in wrangler.jsonc.`);
-' "$database_id"
+node scripts/database-id.mjs wrangler.jsonc "$database_id"
 
 echo "Applying database migrations."
 npx wrangler d1 migrations apply rampboard --remote
