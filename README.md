@@ -1,8 +1,10 @@
 # Rampboard
 
-Rampboard is the scheduling desk for Bushman Aviation at Hobby Field (77S) in Creswell, Oregon. It keeps the rental fleet, instructor time, and pilot reservations in one place, and it runs entirely on Cloudflare.
+Rampboard is the scheduling desk for the rental airplane and instructor at Hobby Field (77S) in Creswell, Oregon. It keeps the airplane, instructor time, and pilot reservations in one place, and it runs entirely on Cloudflare.
 
 Times on the board are Pacific time (`America/Los_Angeles`).
+
+The name on the screen is **Bushman Aviation**. That was a placeholder. Every page, calendar feed, and notification reads one setting, `ORG_NAME`, in `src/types.ts`. Change that one string to the name you want, save the file, then start the site again or deploy. You do not need to change it anywhere else.
 
 You do not need to be a programmer to run this. The steps below are copy-and-paste.
 
@@ -41,14 +43,18 @@ Then continue with the migrate, seed, and dev commands above.
 
 ### Sample logins
 
-Seeding loads obviously fake people and airplanes. Every sample account uses the same password: `Pattern123!`
+Seeding loads the real airplane and instructor, plus made-up pilots so the board is not empty. Every sample account uses the same password: `Pattern123!`
+
+The airplane is **N1561Y**, a Cessna 172C. The wet rate in the sample is **$155 an hour**, which is the rate to use. The dry rate is blank on purpose. Open the airplane and type a dry rate when you have one. Until then, book wet. A dry reservation is refused.
+
+The instructor is **Juan Valdivia** at **$75 an hour**. The pilots (Priya, Luis, Sam, and Jordan) are not real people. Their Hobbs and tach numbers are samples, not the airplane’s current meters. Set the real meters on the airplane page before you check a real flight out.
 
 | Who | Email | What they can do |
 | --- | --- | --- |
 | Kyle Bushman | kyle.bushman@example.com | Admin. Sees the whole operation. |
-| Maya Chen | maya.chen@example.com | Instructor. |
-| Priya Shah | priya.shah@example.com | Pilot, current medical, checked out in the 172 and the Archer. |
-| Sam Okonkwo | sam.okonkwo@example.com | Pilot whose medical is expired. Booking is blocked. |
+| Juan Valdivia | juan.valdivia@example.com | Instructor, $75 an hour. |
+| Priya Shah | priya.shah@example.com | Sample pilot, current medical, checked out in N1561Y. |
+| Sam Okonkwo | sam.okonkwo@example.com | Sample pilot whose medical is expired. Booking is blocked. |
 
 Change these passwords before anyone outside your office uses the site. The phone numbers and `@example.com` addresses are not real.
 

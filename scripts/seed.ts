@@ -21,6 +21,6 @@ console.log("");
 console.log("Sample data is loaded. Every demo login uses the same password.");
 console.log(`Password: ${DEMO_PASSWORD}`);
 console.log("Admin:       kyle.bushman@example.com");
-console.log("Instructor:  maya.chen@example.com");
+console.log("Instructor:  juan.valdivia@example.com");
 console.log("Pilot:       priya.shah@example.com");
 console.log("Expired medical (booking is blocked): sam.okonkwo@example.com");

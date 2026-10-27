@@ -51,7 +51,7 @@ async function makeAircraft(partial: Partial<Aircraft> = {}): Promise<Aircraft> 
     model: partial.model ?? "172S",
     year: 2018,
     hourlyWetCents: partial.hourlyWetCents ?? 18000,
-    hourlyDryCents: partial.hourlyDryCents ?? 15000,
+    hourlyDryCents: partial.hourlyDryCents === undefined ? 15000 : partial.hourlyDryCents,
     defaultRate: "wet",
     status: partial.status ?? "available",
     hobbs: partial.hobbs ?? 100,
@@ -338,10 +338,24 @@ describe("scheduling", () => {
     expect(ride.status).toBe(303);
   });
 
+  it("refuses a dry booking when the airplane has no dry rate", async () => {
+    const pilot = await makeUser({ email: "pilot@example.com", name: "Priya Shah", role: "renter" });
+    const aircraft = await makeAircraft({ tailNumber: "N1561Y", model: "172C", hourlyWetCents: 15500, hourlyDryCents: null });
+    await upsertCheckout(db(), { userId: pilot.id, aircraftId: aircraft.id, status: "current", checkedOutOn: todayInZone(), expiresOn: null });
+    const when = slot(3, "09:00", "11:00");
+    const denied = await post(
+      "/reservations",
+      { aircraft_id: aircraft.id, pilot_id: pilot.id, starts_at: when.starts, ends_at: when.ends, rate_basis: "dry" },
+      await login(pilot.email),
+    );
+    expect(denied.status).toBe(422);
+    expect(await denied.text()).toContain("does not have a dry rate");
+  });
+
   it("checks out, checks in, and stores Hobbs cost", async () => {
     const pilot = await makeUser({ email: "pilot@example.com", name: "Priya Shah", role: "renter" });
     const instructor = await makeUser({ email: "cfi@example.com", name: "Maya Chen", role: "instructor", instructorRateCents: 7500 });
-    const aircraft = await makeAircraft({ hourlyWetCents: 18000, hobbs: 100, tach: 80 });
+    const aircraft = await makeAircraft({ hourlyWetCents: 15500, hourlyDryCents: null, hobbs: 100, tach: 80 });
     await upsertCheckout(db(), { userId: pilot.id, aircraftId: aircraft.id, status: "current", checkedOutOn: todayInZone(), expiresOn: null });
     const cookie = await login(pilot.email);
     const when = slot(1, "09:00", "11:00");
@@ -367,9 +381,9 @@ describe("scheduling", () => {
     expect(done.headers.get("location")).toContain("/logs/");
     const log = await get(done.headers.get("location") ?? "/", cookie);
     const html = await log.text();
-    expect(html).toContain("$252.00");
+    expect(html).toContain("$217.00");
     expect(html).toContain("$105.00");
-    expect(html).toContain("$357.00");
+    expect(html).toContain("$322.00");
     const meter = await db().prepare("SELECT hobbs FROM aircraft WHERE id = ?").bind(aircraft.id).first<{ hobbs: number }>();
     expect(meter?.hobbs).toBeCloseTo(101.4);
     const mail = await db().prepare("SELECT COUNT(*) AS n FROM email_outbox").first<{ n: number }>();
@@ -429,10 +443,32 @@ describe("sample data", () => {
     await db().exec(await buildDemoSeedSql(new Date("2026-10-26T18:00:00.000Z")));
     const aircraft = await db().prepare("SELECT COUNT(*) AS n FROM aircraft").first<{ n: number }>();
     const logs = await db().prepare("SELECT COUNT(*) AS n FROM flight_logs").first<{ n: number }>();
-    expect(Number(aircraft?.n)).toBe(5);
+    expect(Number(aircraft?.n)).toBe(1);
     expect(Number(logs?.n)).toBeGreaterThan(0);
+    const plane = await db()
+      .prepare("SELECT tail_number, model, hourly_wet_cents, hourly_dry_cents FROM aircraft")
+      .first<{ tail_number: string; model: string; hourly_wet_cents: number; hourly_dry_cents: number | null }>();
+    expect(plane?.tail_number).toBe("N1561Y");
+    expect(plane?.model).toBe("172C");
+    expect(plane?.hourly_wet_cents).toBe(15500);
+    expect(plane?.hourly_dry_cents).toBeNull();
+    const instructors = await db().prepare("SELECT name, instructor_rate_cents FROM users WHERE role = 'instructor'").all<{ name: string; instructor_rate_cents: number }>();
+    expect(instructors.results).toEqual([{ name: "Juan Valdivia", instructor_rate_cents: 7500 }]);
+    const solo = await db()
+      .prepare("SELECT total_cost_cents, aircraft_rate_cents FROM flight_logs WHERE flight_hours = 1.5")
+      .first<{ total_cost_cents: number; aircraft_rate_cents: number }>();
+    expect(solo?.aircraft_rate_cents).toBe(15500);
+    expect(solo?.total_cost_cents).toBe(23250);
+    const dual = await db()
+      .prepare("SELECT total_cost_cents, instructor_rate_cents FROM flight_logs WHERE flight_hours = 1.8")
+      .first<{ total_cost_cents: number; instructor_rate_cents: number }>();
+    expect(dual?.instructor_rate_cents).toBe(7500);
+    expect(dual?.total_cost_cents).toBe(41400);
     const cookie = await login("kyle.bushman@example.com");
     const home = await get("/", cookie);
-    expect(await home.text()).toContain("N172RB");
+    const html = await home.text();
+    expect(html).toContain("N1561Y");
+    expect(html).toContain("Juan Valdivia");
+    expect(html).not.toContain("N172RB");
   });
 });

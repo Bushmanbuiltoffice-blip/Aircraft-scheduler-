@@ -477,7 +477,7 @@ async function renderReservation(c: Context<AppEnv>, id: string, actionError: st
         log={log}
         hobbsSuggestion={aircraft?.hobbs == null ? "" : aircraft.hobbs.toFixed(1)}
         tachSuggestion={aircraft?.tach == null ? "" : aircraft.tach.toFixed(1)}
-        aircraftRateCents={entry.rateBasis === "dry" ? aircraft?.hourlyDryCents ?? 0 : aircraft?.hourlyWetCents ?? 0}
+        aircraftRateCents={entry.rateBasis === "dry" ? aircraft?.hourlyDryCents ?? null : aircraft?.hourlyWetCents ?? null}
         instructorRateCents={entry.instructorId ? (await instructorRate(c, entry.instructorId)) : null}
         actionError={actionError}
       />,
@@ -538,6 +538,9 @@ async function saveBooking(c: Context<AppEnv>, existingId: string | null): Promi
   const startsLocal = parseLocalDateTime(values.startsAt);
   const endsLocal = parseLocalDateTime(values.endsAt);
   if (!startsLocal || !endsLocal) errors.push("Enter a start and end in Pacific Time.");
+  if (aircraft && values.rateBasis === "dry" && aircraft.hourlyDryCents == null) {
+    errors.push(`${aircraft.tailNumber} does not have a dry rate. Choose wet, or set a dry rate on the aircraft.`);
+  }
   if (values.notes.length > 2000) errors.push("Notes are too long.");
   if (errors.length || !aircraft || !pilot || !startsLocal || !endsLocal) return fail(errors);
   const startsAt = zonedTimeToUtc(startsLocal);

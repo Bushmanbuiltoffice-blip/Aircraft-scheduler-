@@ -11,6 +11,10 @@ if (form && estimate) {
       estimate.textContent = "Enter Hobbs in to preview the cost. Billing uses Hobbs, not the reservation length.";
       return;
     }
+    if (!form.dataset.aircraftRate) {
+      estimate.textContent = "This airplane has no rate for this flight, so there is nothing to preview.";
+      return;
+    }
     const tenths = Math.round(next * 10) - Math.round(hobbsOut * 10);
     if (tenths <= 0) {
       estimate.textContent = "Hobbs in has to be higher than Hobbs out.";

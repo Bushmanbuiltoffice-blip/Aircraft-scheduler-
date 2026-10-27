@@ -8,7 +8,8 @@ export function formatMoney(cents: number): string {
   return `${sign}$${dollars.toLocaleString("en-US")}.${String(rem).padStart(2, "0")}`;
 }
 
-export function centsToDollarInput(cents: number): string {
+export function centsToDollarInput(cents: number | null): string {
+  if (cents == null) return "";
   return (cents / 100).toFixed(2);
 }
 

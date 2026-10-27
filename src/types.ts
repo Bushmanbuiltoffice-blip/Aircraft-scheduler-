@@ -1,6 +1,8 @@
 export const TIME_ZONE = "America/Los_Angeles";
 export const SESSION_COOKIE = "rampboard_session";
 export const SESSION_DAYS = 14;
+// Shown on every page, in calendar feeds, and in notification text.
+// Change this one string to rename the operation.
 export const ORG_NAME = "Bushman Aviation";
 export const FIELD_NAME = "Hobby Field (77S), Creswell";
 
@@ -57,7 +59,7 @@ export interface Aircraft {
   model: string;
   year: number | null;
   hourlyWetCents: number;
-  hourlyDryCents: number;
+  hourlyDryCents: number | null;
   defaultRate: RateBasis;
   status: AircraftStatus;
   hobbs: number | null;

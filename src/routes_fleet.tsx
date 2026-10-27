@@ -481,7 +481,7 @@ function parseAircraft(data: Record<string, string>): { values: AircraftFormValu
     notes: field(data, "notes"),
   };
   const errors: string[] = [];
-  if (!/^[A-Z0-9-]{2,8}$/.test(values.tailNumber)) errors.push("Use a tail number of 2–8 letters or numbers, like N172RB.");
+  if (!/^[A-Z0-9-]{2,8}$/.test(values.tailNumber)) errors.push("Use a tail number of 2–8 letters or numbers, like N1561Y.");
   if (values.make.length < 2 || values.make.length > 40) errors.push("Enter the make.");
   if (values.model.length < 1 || values.model.length > 40) errors.push("Enter the model.");
   let year: number | null = null;
@@ -490,9 +490,10 @@ function parseAircraft(data: Record<string, string>): { values: AircraftFormValu
     else year = Number(values.year);
   }
   const wet = parseDollarsToCents(values.wet);
-  const dry = parseDollarsToCents(values.dry);
-  if (wet == null) errors.push("Enter a wet hourly rate, like 179.00.");
-  if (dry == null) errors.push("Enter a dry hourly rate, like 149.00.");
+  const dry = values.dry.trim() ? parseDollarsToCents(values.dry) : null;
+  if (wet == null) errors.push("Enter a wet hourly rate, like 155.00.");
+  if (values.dry.trim() && dry == null) errors.push("Dry hourly rate should look like 120.00, or be left blank.");
+  if (values.defaultRate === "dry" && dry == null) errors.push("Set a dry rate, or choose wet as the default.");
   if (values.defaultRate !== "wet" && values.defaultRate !== "dry") errors.push("Choose wet or dry as the default rate.");
   if (values.status !== "available" && values.status !== "grounded") errors.push("Choose a status.");
   let hobbs: number | null = null;
@@ -506,7 +507,7 @@ function parseAircraft(data: Record<string, string>): { values: AircraftFormValu
     if (tach == null) errors.push("Tach is a number with at most one decimal.");
   }
   if (values.notes.length > 2000) errors.push("Notes are too long.");
-  if (errors.length || wet == null || dry == null) return { values, errors, aircraft: null };
+  if (errors.length || wet == null) return { values, errors, aircraft: null };
   return {
     values,
     errors,

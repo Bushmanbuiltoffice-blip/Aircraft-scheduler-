@@ -29,7 +29,7 @@ CREATE TABLE aircraft (
   model TEXT NOT NULL,
   year INTEGER,
   hourly_wet_cents INTEGER NOT NULL,
-  hourly_dry_cents INTEGER NOT NULL,
+  hourly_dry_cents INTEGER,
   default_rate TEXT NOT NULL CHECK (default_rate IN ('wet', 'dry')),
   status TEXT NOT NULL CHECK (status IN ('available', 'grounded')),
   hobbs REAL,

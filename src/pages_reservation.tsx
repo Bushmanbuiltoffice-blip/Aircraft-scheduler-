@@ -15,7 +15,7 @@ export function ReservationPage(props: {
   log: FlightLogView | null;
   hobbsSuggestion: string;
   tachSuggestion: string;
-  aircraftRateCents: number;
+  aircraftRateCents: number | null;
   instructorRateCents: number | null;
   actionError?: string | null;
 }) {
@@ -88,7 +88,7 @@ export function ReservationPage(props: {
             action={`/reservations/${entry.id}/checkin`}
             class="fields"
             data-hobbs-out={String(entry.hobbsOut ?? "")}
-            data-aircraft-rate={String(props.aircraftRateCents)}
+            data-aircraft-rate={props.aircraftRateCents == null ? "" : String(props.aircraftRateCents)}
             data-instructor-rate={entry.instructorId ? String(estimateRate) : "0"}
           >
             <p class="wide muted">Hobbs out {formatMeter(entry.hobbsOut)} · Tach out {formatMeter(entry.tachOut)}</p>

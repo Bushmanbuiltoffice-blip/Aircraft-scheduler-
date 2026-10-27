@@ -1,3 +1,5 @@
+import { ORG_NAME } from "./types";
+
 export type IcalEvent = {
   uid: string;
   stamp: string;
@@ -12,7 +14,7 @@ export function buildIcal(events: IcalEvent[], calendarName: string): string {
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Bushman Aviation//Rampboard//EN",
+    `PRODID:-//${ORG_NAME}//Rampboard//EN`,
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     `X-WR-CALNAME:${escapeText(calendarName)}`,

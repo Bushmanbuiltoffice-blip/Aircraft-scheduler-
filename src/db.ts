@@ -38,7 +38,7 @@ type AircraftRow = {
   model: string;
   year: number | null;
   hourly_wet_cents: number;
-  hourly_dry_cents: number;
+  hourly_dry_cents: number | null;
   default_rate: RateBasis;
   status: AircraftStatus;
   hobbs: number | null;

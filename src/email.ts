@@ -1,4 +1,5 @@
 import type { D1Database } from "@cloudflare/workers-types";
+import { ORG_NAME } from "./types";
 
 export type EmailMessage = {
   to: string;
@@ -59,7 +60,7 @@ export function reservationMessage(input: {
   const lines = [
     `Hi ${input.recipientName},`,
     "",
-    `Your Bushman Aviation reservation was ${verb}.`,
+    `Your ${ORG_NAME} reservation was ${verb}.`,
     `Aircraft: ${input.tail}`,
     `When: ${input.when} (Pacific Time)`,
     `Pilot: ${who}`,

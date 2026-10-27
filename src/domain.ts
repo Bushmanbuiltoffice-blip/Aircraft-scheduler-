@@ -8,7 +8,7 @@ export type CostInput = {
   tachIn: number | null;
   rateBasis: RateBasis;
   wetCents: number;
-  dryCents: number;
+  dryCents: number | null;
   instructorRateCents: number | null;
 };
 
@@ -56,6 +56,9 @@ export function computeFlightCost(input: CostInput): { ok: true; value: CostValu
   const tenths = hobbsInTenths - hobbsOutTenths;
   const flightHours = tenths / 10;
   const aircraftRateCents = input.rateBasis === "wet" ? input.wetCents : input.dryCents;
+  if (aircraftRateCents == null) {
+    return { ok: false, error: "This aircraft has no dry rate. Add one before checking in a dry flight, or switch the reservation to wet." };
+  }
   const aircraftCostCents = Math.round((tenths * aircraftRateCents) / 10);
   const hasInstructor = input.instructorRateCents != null;
   const instructorRateCents = input.instructorRateCents ?? 0;

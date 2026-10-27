@@ -12,16 +12,32 @@ describe("flight cost", () => {
       tachOut: 80,
       tachIn: 81.1,
       rateBasis: "wet",
-      wetCents: 18000,
-      dryCents: 15000,
+      wetCents: 15500,
+      dryCents: null,
       instructorRateCents: 7500,
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.flightHours).toBeCloseTo(1.4);
-    expect(result.value.aircraftCostCents).toBe(25200);
+    expect(result.value.aircraftRateCents).toBe(15500);
+    expect(result.value.aircraftCostCents).toBe(21700);
+    expect(result.value.instructorRateCents).toBe(7500);
     expect(result.value.instructorCostCents).toBe(10500);
-    expect(result.value.totalCostCents).toBe(35700);
+    expect(result.value.totalCostCents).toBe(32200);
+  });
+
+  it("refuses a dry check-in when the airplane has no dry rate", () => {
+    const result = computeFlightCost({
+      hobbsOut: 100,
+      hobbsIn: 101,
+      tachOut: null,
+      tachIn: null,
+      rateBasis: "dry",
+      wetCents: 15500,
+      dryCents: null,
+      instructorRateCents: null,
+    });
+    expect(result.ok).toBe(false);
   });
 
   it("does not bill an instructor on a solo flight", () => {

@@ -38,7 +38,7 @@ export function AircraftListPage(props: {
               <span class={`pill ${item.status}`}>{statusLabel(item.status)}</span>
             </div>
             <p>{item.year ? `${item.year} ` : ""}{item.make} {item.model}</p>
-            <p>{formatMoney(item.hourlyWetCents)} wet · {formatMoney(item.hourlyDryCents)} dry</p>
+            <p>{formatMoney(item.hourlyWetCents)} wet · {item.hourlyDryCents == null ? "dry not set" : `${formatMoney(item.hourlyDryCents)} dry`}</p>
             <p class="muted">Hobbs {formatMeter(item.hobbs)} · Tach {formatMeter(item.tach)}</p>
           </a>
         ))}
@@ -78,7 +78,7 @@ export function AircraftFormPage(props: {
         <section class="card card-pad">
           <p><span class={`pill ${props.values.status}`}>{statusLabel(props.values.status as AircraftStatus)}</span></p>
           <p>{props.values.year} {props.values.make} {props.values.model}</p>
-          <p>{props.values.wet} wet · {props.values.dry} dry · default {props.values.defaultRate}</p>
+          <p>{props.values.wet} wet · {props.values.dry || "dry not set"} · default {props.values.defaultRate}</p>
           <p class="muted">Hobbs {props.values.hobbs || "—"} · Tach {props.values.tach || "—"}</p>
           {props.values.notes ? <p>{props.values.notes}</p> : null}
         </section>
@@ -183,7 +183,7 @@ function AircraftFields(props: { values: AircraftFormValues }) {
       </label>
       <label>
         Dry hourly rate
-        <input name="dry" required value={values.dry} inputmode="decimal" />
+        <input name="dry" value={values.dry} inputmode="decimal" placeholder="Leave blank if unset" />
       </label>
       <label>
         Current Hobbs

@@ -245,7 +245,7 @@ export function ReservationFormPage(props: {
             Rate
             <select name="rate_basis">
               <option value="wet" selected={props.values.rateBasis === "wet"}>Wet (fuel included)</option>
-              <option value="dry" selected={props.values.rateBasis === "dry"}>Dry</option>
+              <option value="dry" selected={props.values.rateBasis === "dry"}>Dry (only when this airplane has a dry rate)</option>
             </select>
           </label>
           <label>
