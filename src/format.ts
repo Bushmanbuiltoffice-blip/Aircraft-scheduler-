@@ -1,5 +1,7 @@
 import type { AircraftStatus, RateBasis, ReservationStatus, Role } from "./types";
 
+export const BILLED_OUTSIDE_LABEL = "Historical import, billed outside app";
+
 export function formatMoney(cents: number): string {
   const sign = cents < 0 ? "-" : "";
   const abs = Math.abs(Math.round(cents));
@@ -64,6 +66,25 @@ export function statusLabel(status: ReservationStatus | AircraftStatus): string 
 
 export function rateLabel(basis: RateBasis): string {
   return basis === "wet" ? "Wet" : "Dry";
+}
+
+export function paperPaidLabel(input: {
+  maintenanceFlight: boolean;
+  aircraftPaid: boolean;
+  instructorPaid: boolean;
+}): string {
+  if (input.maintenanceFlight) return "Maintenance";
+  const parts: string[] = [];
+  if (input.aircraftPaid) parts.push("Aircraft paid");
+  if (input.instructorPaid) parts.push("instructor paid");
+  return parts.length ? parts.join("; ") : "—";
+}
+
+export function formatQuantity(value: number | null | undefined, unit: string): string {
+  if (value == null || Number.isNaN(value)) return "—";
+  const rounded = Math.round((value + Number.EPSILON) * 100) / 100;
+  const text = rounded.toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1");
+  return `${text} ${unit}`;
 }
 
 export function aircraftTitle(make: string, model: string): string {

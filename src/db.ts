@@ -4,6 +4,7 @@ import type {
   AircraftStatus,
   Checkout,
   CheckoutStatus,
+  BillingStatus,
   FlightLogView,
   MaintenanceBlock,
   PilotBilling,
@@ -466,11 +467,13 @@ function mapCheckout(row: CheckoutRow): Checkout {
 
 const RESERVATION_JOIN = `
   SELECT r.*, a.tail_number, a.make, a.model,
-         p.name AS pilot_name, i.name AS instructor_name
+         p.name AS pilot_name,
+         COALESCE(i.name, f.instructor_name) AS instructor_name
   FROM reservations r
   JOIN aircraft a ON a.id = r.aircraft_id
   JOIN users p ON p.id = r.pilot_id
   LEFT JOIN users i ON i.id = r.instructor_id
+  LEFT JOIN flight_logs f ON f.reservation_id = r.id
 `;
 
 type ScheduleRow = ReservationRow & {
@@ -855,10 +858,21 @@ export async function checkInReservation(db: D1Database, log: FlightLogInsert): 
   return saved != null;
 }
 
+const FLIGHT_LOG_SELECT = `
+  f.id, f.reservation_id, f.pilot_id, f.instructor_id, f.aircraft_id,
+  f.hobbs_out, f.hobbs_in, f.tach_out, f.tach_in, f.flight_hours,
+  f.aircraft_rate_cents, f.aircraft_cost_cents, f.instructor_rate_cents,
+  f.instructor_hours, f.instructor_cost_cents, f.total_cost_cents, f.rate_basis, f.created_at,
+  f.ground_hours, f.aircraft_paid, f.instructor_paid, f.maintenance_flight,
+  f.fuel_added_gal, f.oil_added_qt, f.rental_type, f.imported,
+  f.instructor_name AS guest_instructor_name, f.billing_status, f.billing_note,
+  p.name AS pilot_name, i.name AS linked_instructor_name, a.tail_number, a.make, a.model
+`;
+
 export async function getFlightLogByReservation(db: D1Database, reservationId: string): Promise<FlightLogView | null> {
   const row = await db
     .prepare(
-      `SELECT f.*, p.name AS pilot_name, i.name AS instructor_name, a.tail_number, a.make, a.model
+      `SELECT ${FLIGHT_LOG_SELECT}
        FROM flight_logs f
        JOIN users p ON p.id = f.pilot_id
        LEFT JOIN users i ON i.id = f.instructor_id
@@ -873,7 +887,7 @@ export async function getFlightLogByReservation(db: D1Database, reservationId: s
 export async function getFlightLog(db: D1Database, id: string): Promise<FlightLogView | null> {
   const row = await db
     .prepare(
-      `SELECT f.*, p.name AS pilot_name, i.name AS instructor_name, a.tail_number, a.make, a.model
+      `SELECT ${FLIGHT_LOG_SELECT}
        FROM flight_logs f
        JOIN users p ON p.id = f.pilot_id
        LEFT JOIN users i ON i.id = f.instructor_id
@@ -902,7 +916,7 @@ export async function listFlightLogs(
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const { results } = await db
     .prepare(
-      `SELECT f.*, p.name AS pilot_name, i.name AS instructor_name, a.tail_number, a.make, a.model
+      `SELECT ${FLIGHT_LOG_SELECT}
        FROM flight_logs f
        JOIN users p ON p.id = f.pilot_id
        LEFT JOIN users i ON i.id = f.instructor_id
@@ -935,14 +949,27 @@ type FlightLogRow = {
   total_cost_cents: number;
   rate_basis: RateBasis;
   created_at: string;
+  ground_hours: number | null;
+  aircraft_paid: number;
+  instructor_paid: number;
+  maintenance_flight: number;
+  fuel_added_gal: number | null;
+  oil_added_qt: number | null;
+  rental_type: string | null;
+  imported: number;
+  guest_instructor_name: string | null;
+  billing_status: string;
+  billing_note: string | null;
   pilot_name: string;
-  instructor_name: string | null;
+  linked_instructor_name: string | null;
   tail_number: string;
   make: string;
   model: string;
 };
 
 function mapFlightLog(row: FlightLogRow): FlightLogView {
+  const billingStatus: BillingStatus = row.billing_status === "external" ? "external" : "in_app";
+  const guestInstructorName = row.guest_instructor_name;
   return {
     id: row.id,
     reservationId: row.reservation_id,
@@ -962,8 +989,19 @@ function mapFlightLog(row: FlightLogRow): FlightLogView {
     totalCostCents: row.total_cost_cents,
     rateBasis: row.rate_basis,
     createdAt: row.created_at,
+    groundHours: row.ground_hours,
+    aircraftPaid: row.aircraft_paid === 1,
+    instructorPaid: row.instructor_paid === 1,
+    maintenanceFlight: row.maintenance_flight === 1,
+    fuelAddedGal: row.fuel_added_gal,
+    oilAddedQt: row.oil_added_qt,
+    rentalType: row.rental_type,
+    imported: row.imported === 1,
+    guestInstructorName,
+    billingStatus,
+    billingNote: row.billing_note,
     pilotName: row.pilot_name,
-    instructorName: row.instructor_name,
+    instructorName: row.linked_instructor_name ?? guestInstructorName,
     tailNumber: row.tail_number,
     make: row.make,
     model: row.model,
@@ -978,7 +1016,7 @@ export async function billingByPilot(db: D1Database): Promise<PilotBilling[]> {
               COALESCE(SUM(f.flight_hours), 0) AS hours,
               COALESCE(SUM(f.total_cost_cents), 0) AS total_cents
        FROM users u
-       JOIN flight_logs f ON f.pilot_id = u.id
+       JOIN flight_logs f ON f.pilot_id = u.id AND f.billing_status != 'external'
        GROUP BY u.id
        ORDER BY total_cents DESC, u.name`,
     )
@@ -992,12 +1030,13 @@ export async function billingByPilot(db: D1Database): Promise<PilotBilling[]> {
   }));
 }
 
+/** Hobbs hours include every logged flight. The flight count and cents are in-app charges only. */
 export async function monthTotals(db: D1Database, startIso: string, endIso: string): Promise<{ hours: number; cents: number; flights: number }> {
   const row = await db
     .prepare(
-      `SELECT COUNT(*) AS flights,
+      `SELECT COALESCE(SUM(CASE WHEN billing_status = 'external' THEN 0 ELSE 1 END), 0) AS flights,
               COALESCE(SUM(flight_hours), 0) AS hours,
-              COALESCE(SUM(total_cost_cents), 0) AS cents
+              COALESCE(SUM(CASE WHEN billing_status = 'external' THEN 0 ELSE total_cost_cents END), 0) AS cents
        FROM flight_logs
        WHERE created_at >= ? AND created_at < ?`,
     )

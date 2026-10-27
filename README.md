@@ -127,7 +127,7 @@ Sign in, then:
 - **Schedule** is the day board. Switch to Week or Month, or switch the rows from airplanes to instructors. Month is a Sunday-to-Saturday calendar in Pacific time. Each day lists that airplane’s flights (time, pilot, and instructor when there is one) and marks maintenance. Tap a day to open that day’s board. On a phone, a day shows a count and dots until you tap it open. Click a reservation to open it. **New reservation** is on that page.
 - **Aircraft** is the fleet. Open an airplane to edit rates or to mark it down for maintenance. “Also mark grounded now” takes it off the line immediately. **Return to service** makes it available again. A maintenance block still blocks the hours it covers even after the airplane is available.
 - **People** is where an admin adds pilots and instructors and sets checkouts. Pilots do not see this menu. Everyone can open **Account** to update their own phone number and medical date, change their password, and copy their calendar link.
-- **Flight logs** lists completed flights and the Hobbs time and charges.
+- **Flight logs** lists completed flights, Hobbs and tach, fuel and oil, the flight type, and the amount billed. A row marked **Billed outside** was copied from the paper log. Its page says **Historical import, billed outside app**, the charge is $0.00, and it is left off Billing by pilot.
 
 On a reservation, **Check out** records the Hobbs and tach at departure. **Check in** records the return readings, computes the time and the price, and writes the flight log. Hobbs time is what gets billed. Tach is stored and is not billed. The instructor, when one is assigned, is billed for the same Hobbs time at their hourly rate.
 
@@ -145,6 +145,30 @@ Booking, changing, cancelling, and checking in a flight already write a message 
 
 To send real mail later, replace `OutboxEmailSender` in `src/email.ts` with a class that calls your provider. The rest of the app already calls that one hook.
 
+## Import the paper flight log
+
+The file `data/import/n1561y_flights_2026-09-05_to_2026-10-22.csv` is the N1561Y log from September 5, 2026 through October 22, 2026 (24 flights). Those flights were already paid outside Firehound Rental. The import adds the flight records and pilot names, writes **Historical import, billed outside app** on each one, and leaves every charge at $0.00. It does not create an invoice or a balance.
+
+From the project folder, on a machine logged in to Cloudflare (`npx wrangler login`, or `CLOUDFLARE_API_TOKEN` set), apply the new database columns and then import. This does not publish the site:
+
+```bash
+npm run db:migrate:remote
+bash scripts/import-flights.sh data/import/n1561y_flights_2026-09-05_to_2026-10-22.csv
+```
+
+Run the import again whenever you need to. A flight already stored for the same airplane, date, and Hobbs start is left as it is. Juan Valdivia is matched by name, so he stays the instructor already on file and is also the pilot on his maintenance flights. New names become pilot profiles with no email and no sign-in. An instructor who is not already a person, such as Hannah Edward's, is stored as text on that flight only.
+
+On **Flight logs**, each imported row shows the flight type and a **Billed outside** label, with the line **Historical import, billed outside app** under it. Open the row for ground time, fuel, oil, the paper-log paid marks, and a charge card that reads $0.00 for the aircraft and $0.00 for the instructor, plus “This flight is not on the pilot's balance.” The same card appears on the reservation. **Billing by pilot** and the balance on a person’s page omit these flights. The month Hobbs-hours figure still counts the time. N1561Y’s Hobbs and tach move forward to 318.6 and 467.4 when the saved readings are blank or lower. A higher reading already stored is left alone.
+
+To rehearse on this computer:
+
+```bash
+npm run db:migrate:local
+bash scripts/import-flights.sh data/import/n1561y_flights_2026-09-05_to_2026-10-22.csv --local
+```
+
+`--bill --instructor-rate 75` would charge Hobbs time inside the app. Leave that off for this log.
+
 ## Commands
 
 | Command | What it does |
@@ -158,6 +182,7 @@ To send real mail later, replace `OutboxEmailSender` in `src/email.ts` with a cl
 | `npm run db:seed:remote -- --yes` | Replaces the Cloudflare database with the fake sample. Do not use this on the live site |
 | `npm run db:seed:prod -- --yes` | Adds N1561Y and Juan Valdivia to Cloudflare. Does not delete existing rows |
 | `bash scripts/deploy-prod.sh` | Creates the database, migrates, seeds production if the fleet is empty, sets the sign-in secret, and publishes |
+| `bash scripts/import-flights.sh data/import/n1561y_flights_2026-09-05_to_2026-10-22.csv` | Adds the paper flight log to Cloudflare with zero charges. Apply migrations first. Safe to run again |
 | `npm run deploy` | Publishes the site. Requires the steps in “Put it on Cloudflare” first |
 
 ## Project layout
@@ -167,6 +192,8 @@ To send real mail later, replace `OutboxEmailSender` in `src/email.ts` with a cl
 | `src/` | The website and the API, one Cloudflare Worker |
 | `public/` | Styles, the check-in calculator, and the icon |
 | `migrations/` | Database tables. Applied in order, never edited after they have been used on Cloudflare |
+| `data/import/` | Paper flight logs to import |
+| `scripts/import-flights.sh` | Loads a paper flight log into D1 |
 | `scripts/seed.ts` | Builds and loads the sample data |
 | `test/` | Automated checks for the core flows |
 | `wrangler.jsonc` | Cloudflare project settings, including the database id |

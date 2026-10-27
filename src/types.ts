@@ -9,6 +9,7 @@ export const FIELD_NAME = "Hobby Field (77S), Creswell";
 export type Role = "admin" | "instructor" | "renter";
 export type AircraftStatus = "available" | "grounded";
 export type RateBasis = "wet" | "dry";
+export type BillingStatus = "in_app" | "external";
 export type ReservationStatus = "scheduled" | "checked_out" | "checked_in" | "cancelled";
 export type CheckoutStatus = "current" | "expired" | "revoked";
 export type CertificateType =
@@ -126,6 +127,17 @@ export interface FlightLog {
   totalCostCents: number;
   rateBasis: RateBasis;
   createdAt: string;
+  groundHours: number | null;
+  aircraftPaid: boolean;
+  instructorPaid: boolean;
+  maintenanceFlight: boolean;
+  fuelAddedGal: number | null;
+  oilAddedQt: number | null;
+  rentalType: string | null;
+  imported: boolean;
+  guestInstructorName: string | null;
+  billingStatus: BillingStatus;
+  billingNote: string | null;
 }
 
 export type ScheduleEntry = {

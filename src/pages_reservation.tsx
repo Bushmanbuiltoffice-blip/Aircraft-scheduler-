@@ -1,7 +1,8 @@
 /** @jsxImportSource hono/jsx */
-import { formatHours, formatMeter, formatMoney, rateLabel, statusLabel } from "./format";
+import { formatMeter, rateLabel, statusLabel } from "./format";
 import { formatDateTime, toDateTimeLocalValue } from "./time";
 import type { FlightLogView, ScheduleEntry } from "./types";
+import { FlightChargeCard, HistoricalDetails } from "./pages_logs";
 import { Layout, PageHead, Warnings, type Viewer } from "./ui";
 
 export function ReservationPage(props: {
@@ -34,25 +35,20 @@ export function ReservationPage(props: {
           <h2>{formatDateTime(entry.startsAt)} – {formatDateTime(entry.endsAt)}</h2>
           <dl>
             <div><dt>Pilot</dt><dd><a href={`/pilots/${entry.pilotId}`}>{entry.pilotName}</a></dd></div>
-            <div><dt>Instructor</dt><dd>{entry.instructorName ? <a href={`/pilots/${entry.instructorId}`}>{entry.instructorName}</a> : "Solo"}</dd></div>
+            <div><dt>Instructor</dt><dd>{entry.instructorId ? <a href={`/pilots/${entry.instructorId}`}>{entry.instructorName}</a> : (entry.instructorName ?? "Solo")}</dd></div>
             <div><dt>Rate basis</dt><dd>{rateLabel(entry.rateBasis)}</dd></div>
             <div><dt>Aircraft</dt><dd><a class="tail" href={`/aircraft/${entry.aircraftId}`}>{entry.tailNumber}</a></dd></div>
             <div><dt>Hobbs out / in</dt><dd>{formatMeter(entry.hobbsOut)} / {formatMeter(entry.hobbsIn)}</dd></div>
             <div><dt>Tach out / in</dt><dd>{formatMeter(entry.tachOut)} / {formatMeter(entry.tachIn)}</dd></div>
+            {props.log?.imported ? <HistoricalDetails log={props.log} /> : null}
           </dl>
           {entry.notes ? <p class="notes">{entry.notes}</p> : null}
         </div>
         {props.log ? (
-          <aside class="cost-card">
-            <h2>Flight log</h2>
-            <p>{formatHours(props.log.flightHours)} Hobbs hours</p>
-            <ul>
-              <li>Aircraft {formatMoney(props.log.aircraftCostCents)}</li>
-              <li>Instructor {formatMoney(props.log.instructorCostCents)}</li>
-            </ul>
-            <strong>{formatMoney(props.log.totalCostCents)}</strong>
-            <a href={`/logs/${props.log.id}`}>Open the log</a>
-          </aside>
+          <div>
+            <FlightChargeCard log={props.log} />
+            <p><a href={`/logs/${props.log.id}`}>Open the log</a></p>
+          </div>
         ) : (
           <aside class="cost-card">
             <h2>Billing</h2>

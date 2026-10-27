@@ -164,6 +164,7 @@ p { margin: 0.35rem 0; }
 .pill.out, .pill.checked_out { background: #fff1cc; color: #6d4b00; }
 .pill.in, .pill.checked_in, .pill.available { background: #e5f4ec; color: #145233; }
 .pill.grounded, .pill.cancelled { background: #fdecea; color: #6e221c; }
+.pill.external { background: #e7eef6; color: #16324f; }
 .pill.maint { background: #f8e4e0; color: #6e221c; }
 .tail { font-family: var(--mono); letter-spacing: -0.03em; }
 

@@ -217,8 +217,7 @@ export function PersonFormPage(props: {
           <header class="section-head pad"><h2>Billing</h2></header>
           <Logs logs={props.logs} />
           <p class="pad muted">
-            {props.logs.length} flights · {formatHours(props.logs.reduce((sum, log) => sum + log.flightHours, 0))} hours ·{" "}
-            {formatMoney(props.logs.reduce((sum, log) => sum + log.totalCostCents, 0))}
+            {billingSummary(props.logs)}
           </p>
         </section>
       ) : null}
@@ -248,6 +247,17 @@ export function AccountPassword(props: { viewer: Viewer; path: string; usingDevS
       </form>
     </Layout>
   );
+}
+
+function billingSummary(logs: FlightLogView[]): string {
+  const inApp = logs.filter((log) => log.billingStatus !== "external");
+  const outside = logs.length - inApp.length;
+  const cents = inApp.reduce((sum, log) => sum + log.totalCostCents, 0);
+  const hours = logs.reduce((sum, log) => sum + log.flightHours, 0);
+  const billed = `${inApp.length} billed in this app · ${formatHours(hours)} Hobbs hours on the log · ${formatMoney(cents)} on the balance`;
+  if (outside === 0) return billed;
+  const noun = outside === 1 ? "flight stays" : "flights stay";
+  return `${billed}. ${outside} historical ${noun} on this list as already paid outside the app.`;
 }
 
 export function personToForm(user: User): PersonFormValues {

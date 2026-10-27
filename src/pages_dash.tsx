@@ -1,5 +1,5 @@
 /** @jsxImportSource hono/jsx */
-import { formatHours, formatMeter, formatMoney, statusLabel } from "./format";
+import { BILLED_OUTSIDE_LABEL, formatHours, formatMeter, formatMoney, statusLabel } from "./format";
 import { formatDateTime, formatTime } from "./time";
 import type { Aircraft, Checkout, FlightLogView, MaintenanceBlock, PilotBilling, ScheduleEntry } from "./types";
 import { Layout, PageHead, type Viewer } from "./ui";
@@ -112,7 +112,7 @@ export function DashboardPage(props: {
         <section class="card">
           <header class="section-head pad">
             <h2>Billing by pilot</h2>
-            <span class="muted">{formatMoney(props.month.cents)} this month · {props.month.flights} flights</span>
+            <span class="muted">{formatMoney(props.month.cents)} billed this month · {props.month.flights} in-app flights</span>
           </header>
           <div class="table-wrap">
             <table>
@@ -134,7 +134,7 @@ export function DashboardPage(props: {
                   </tr>
                 ))}
                 {props.billing.length === 0 ? (
-                  <tr><td colspan={4} class="muted">No closed flights yet. Cost is calculated at check-in.</td></tr>
+                  <tr><td colspan={4} class="muted">No in-app charges yet. Cost is calculated at check-in. Flights billed outside the app stay on the flight log.</td></tr>
                 ) : null}
               </tbody>
             </table>
@@ -190,6 +190,7 @@ export function LogTable(props: { logs: FlightLogView[] }) {
             <th>When</th>
             <th>Pilot</th>
             <th>Aircraft</th>
+            <th>Type</th>
             <th>Hobbs</th>
             <th>Hours</th>
             <th>Total</th>
@@ -204,12 +205,25 @@ export function LogTable(props: { logs: FlightLogView[] }) {
                 {log.instructorName ? <small class="muted"> with {log.instructorName}</small> : null}
               </td>
               <td class="tail">{log.tailNumber}</td>
+              <td>{log.rentalType ?? "—"}</td>
               <td>{formatMeter(log.hobbsOut)}–{formatMeter(log.hobbsIn)}</td>
-              <td>{formatHours(log.flightHours)}</td>
-              <td>{formatMoney(log.totalCostCents)}</td>
+              <td>
+                {formatHours(log.flightHours)}
+                {log.groundHours != null && log.groundHours > 0 ? <small class="muted">{formatHours(log.groundHours)} ground</small> : null}
+              </td>
+              <td>
+                {log.billingStatus === "external" ? (
+                  <>
+                    <span class="pill external">Billed outside</span>
+                    <small class="muted">{log.billingNote ?? BILLED_OUTSIDE_LABEL}</small>
+                  </>
+                ) : (
+                  formatMoney(log.totalCostCents)
+                )}
+              </td>
             </tr>
           ))}
-          {props.logs.length === 0 ? <tr><td colspan={6} class="muted">No flights logged yet.</td></tr> : null}
+          {props.logs.length === 0 ? <tr><td colspan={7} class="muted">No flights logged yet.</td></tr> : null}
         </tbody>
       </table>
     </div>
