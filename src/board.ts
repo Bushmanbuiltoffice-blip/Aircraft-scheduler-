@@ -90,6 +90,54 @@ export function buildWeekBoard(days: string[], resources: BoardResource[], event
   }));
 }
 
+export type MonthEntry = {
+  href: string;
+  startsAt: string;
+  endsAt: string;
+  className: string;
+  title: string;
+  detail: string;
+  tail: string;
+  aria: string;
+};
+
+export type MonthItem = {
+  href: string;
+  className: string;
+  time: string;
+  title: string;
+  detail: string;
+  tail: string;
+  aria: string;
+};
+
+export type MonthDay = {
+  day: string;
+  inMonth: boolean;
+  items: MonthItem[];
+};
+
+export function buildMonthCalendar(weeks: string[][], monthKey: string, events: MonthEntry[]): MonthDay[][] {
+  return weeks.map((week) =>
+    week.map((day) => {
+      const range = dayRange(day);
+      const items = events
+        .filter((event) => rangesOverlap(event.startsAt, event.endsAt, range.startIso, range.endIso))
+        .sort((a, b) => a.startsAt.localeCompare(b.startsAt) || a.title.localeCompare(b.title))
+        .map((event) => ({
+          href: event.href,
+          className: event.className,
+          time: `${formatTime(event.startsAt)}–${formatTime(event.endsAt)}`,
+          title: event.title,
+          detail: event.detail,
+          tail: event.tail,
+          aria: event.aria,
+        }));
+      return { day, inMonth: day.startsWith(monthKey), items };
+    }),
+  );
+}
+
 function percentInWindow(iso: string, windowStart: string, windowEnd: string): number | null {
   const time = Date.parse(iso);
   const start = Date.parse(windowStart);

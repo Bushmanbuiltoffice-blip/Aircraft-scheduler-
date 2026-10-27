@@ -124,7 +124,7 @@ Password checks use 10,000 rounds so they fit the free plan’s CPU limit. The n
 Sign in, then:
 
 - **Dashboard** shows today’s flights, what is still checked out, airplane status, upcoming reservations, and (for admins) charges by pilot for the month.
-- **Schedule** is the day board. Switch to Week, or switch the rows from airplanes to instructors. Click a reservation to open it. **New reservation** is on that page.
+- **Schedule** is the day board. Switch to Week or Month, or switch the rows from airplanes to instructors. Month is a Sunday-to-Saturday calendar in Pacific time. Each day lists that airplane’s flights (time, pilot, and instructor when there is one) and marks maintenance. Tap a day to open that day’s board. On a phone, a day shows a count and dots until you tap it open. Click a reservation to open it. **New reservation** is on that page.
 - **Aircraft** is the fleet. Open an airplane to edit rates or to mark it down for maintenance. “Also mark grounded now” takes it off the line immediately. **Return to service** makes it available again. A maintenance block still blocks the hours it covers even after the airplane is available.
 - **People** is where an admin adds pilots and instructors and sets checkouts. Pilots do not see this menu. Everyone can open **Account** to update their own phone number and medical date, change their password, and copy their calendar link.
 - **Flight logs** lists completed flights and the Hobbs time and charges.

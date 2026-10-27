@@ -246,6 +246,54 @@ describe("auth and fleet", () => {
 });
 
 describe("scheduling", () => {
+  it("shows the month grid with flights, maintenance, and a link to that day", async () => {
+    await makeUser({ email: "kyle@example.com", name: "Kyle Bushman", role: "admin" });
+    const pilot = await makeUser({ email: "pilot@example.com", name: "Priya Shah", role: "renter" });
+    const instructor = await makeUser({ email: "cfi@example.com", name: "Juan Valdivia", role: "instructor" });
+    const aircraft = await makeAircraft({ tailNumber: "N1561Y", model: "172C", hourlyWetCents: 15500, hourlyDryCents: null });
+    const cookie = await login("kyle@example.com");
+    const when = slot(2, "10:00", "12:00");
+    const day = when.starts.slice(0, 10);
+    const booked = await post(
+      "/reservations",
+      {
+        aircraft_id: aircraft.id,
+        pilot_id: pilot.id,
+        instructor_id: instructor.id,
+        starts_at: when.starts,
+        ends_at: when.ends,
+        rate_basis: "wet",
+      },
+      cookie,
+    );
+    expect(booked.status).toBe(303);
+    const downtime = await post(
+      `/aircraft/${aircraft.id}/maintenance`,
+      { starts_at: `${day}T18:00`, ends_at: `${day}T20:00`, reason: "Oil and filter change" },
+      cookie,
+    );
+    expect(downtime.status).toBe(303);
+    const page = await get(`/schedule?view=month&date=${day}`, cookie);
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    expect(html).toContain(">Month</a>");
+    expect(html).toContain(`class="on" href="/schedule?view=month&amp;board=aircraft&amp;date=${day}"`);
+    expect(html).toContain("Sun");
+    expect(html).toContain("Sat");
+    expect(html).toContain("Priya Shah");
+    expect(html).toContain("Juan Valdivia");
+    expect(html).toContain("N1561Y");
+    expect(html).toContain("10:00");
+    expect(html).toContain("Maintenance");
+    expect(html).toContain("Oil and filter change");
+    expect(html).toContain(`/schedule?view=day&amp;board=aircraft&amp;date=${day}`);
+    expect(html).toContain(`aria-label="Previous month"`);
+    expect(html).toContain(`aria-label="Next month"`);
+    expect(html).toContain(`href="/schedule?view=month&amp;board=aircraft&amp;date=${todayInZone()}"`);
+    expect(html).toContain("month-fold");
+    expect(html).toContain("month-count");
+  });
+
   it("books a flight, rejects conflicts, and allows the next slot", async () => {
     const admin = await makeUser({ email: "kyle@example.com", name: "Kyle Bushman", role: "admin" });
     const pilot = await makeUser({ email: "pilot@example.com", name: "Priya Shah", role: "renter" });

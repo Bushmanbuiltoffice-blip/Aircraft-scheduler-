@@ -331,6 +331,56 @@ dd { margin: 0.1rem 0 0; }
   font-size: 0.75rem;
 }
 .chip strong, .chip span { display: block; }
+.month-board { overflow: hidden; }
+.month-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.month-dow, .month-cell { border-bottom: 1px solid var(--line); border-left: 1px solid var(--line); }
+.month-grid > :nth-child(7n + 1) { border-left: 0; }
+.month-dow {
+  padding: 0.45rem 0.2rem;
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 650;
+  color: var(--muted);
+  background: #faf7f1;
+}
+.month-cell {
+  min-height: 7.4rem;
+  padding: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  background: white;
+}
+.month-cell.outside { background: #f6f3ec; }
+.month-cell.today { background: #fff6df; }
+.month-num {
+  font-family: var(--mono);
+  font-weight: 650;
+  text-decoration: none;
+  color: inherit;
+  align-self: flex-start;
+}
+.month-cell.outside .month-num { color: var(--muted); }
+.month-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+.month-list .chip { font-size: 0.72rem; padding: 0.2rem 0.35rem; }
+.month-list .chip em, .month-list .chip small { display: block; font-style: normal; }
+.month-fold { display: none; }
+.month-fold summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+}
+.month-fold summary::-webkit-details-marker { display: none; }
+.month-dots { display: flex; gap: 0.18rem; flex-wrap: wrap; justify-content: center; }
+.month-dots i { width: 0.45rem; height: 0.45rem; border-radius: 99px; background: #1d4e89; display: block; }
+.month-dots i.out { background: #c48a12; }
+.month-dots i.in { background: #1d6b45; }
+.month-dots i.maint { background: #8d342e; }
+.month-count { font-family: var(--mono); font-size: 0.68rem; color: var(--muted); }
+
 .chip.out { background: #fff1cc; color: #6d4b00; }
 .chip.in { background: #e5f4ec; color: #145233; }
 .chip.maint { background: #f8e4e0; color: #6e221c; }
@@ -378,5 +428,12 @@ dd { margin: 0.1rem 0 0; }
   .topbar { flex-wrap: wrap; }
   .checkout-row { grid-template-columns: 1fr; }
   .page-head { flex-direction: column; align-items: flex-start; }
+  .month-cell { min-height: 4.4rem; padding: 0.28rem 0.15rem; }
+  .month-cell > .month-list { display: none; }
+  .month-fold { display: block; }
+  .month-fold .month-list { display: none; }
+  .month-fold[open] .month-list { display: flex; }
+  .month-dow { font-size: 0.65rem; }
+  .month-num { font-size: 0.8rem; }
   dl { grid-template-columns: 1fr; }
 }

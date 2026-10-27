@@ -1,6 +1,6 @@
 /** @jsxImportSource hono/jsx */
-import type { DayLane, WeekCellItem } from "./board";
-import { DAY_END_HOUR, DAY_START_HOUR, addDays, formatDayLabel, formatLongDay } from "./time";
+import type { DayLane, MonthDay, WeekCellItem } from "./board";
+import { DAY_END_HOUR, DAY_START_HOUR, addDays, formatDayLabel, formatLongDay, formatMonthLabel, shiftMonth } from "./time";
 import type { Aircraft, RateBasis, User } from "./types";
 import { Errors, Layout, PageHead, Warnings, type Viewer } from "./ui";
 
@@ -9,7 +9,7 @@ export function SchedulePage(props: {
   path: string;
   notice?: string | null;
   usingDevSecret: boolean;
-  view: "day" | "week";
+  view: "day" | "week" | "month";
   board: "aircraft" | "instructors";
   anchor: string;
   today: string;
@@ -17,28 +17,35 @@ export function SchedulePage(props: {
   nowPct: number | null;
   weekDays: string[];
   weekRows: Array<{ title: string; subtitle: string; tone: string; href: string; cells: WeekCellItem[][] }>;
+  monthWeeks: MonthDay[][];
 }) {
-  const prev = addDays(props.anchor, props.view === "week" ? -7 : -1);
-  const next = addDays(props.anchor, props.view === "week" ? 7 : 1);
+  const prev = props.view === "month" ? shiftMonth(props.anchor, -1) : addDays(props.anchor, props.view === "week" ? -7 : -1);
+  const next = props.view === "month" ? shiftMonth(props.anchor, 1) : addDays(props.anchor, props.view === "week" ? 7 : 1);
   const hours = Array.from({ length: DAY_END_HOUR - DAY_START_HOUR + 1 }, (_, index) => DAY_START_HOUR + index);
+  const lede = props.view === "month"
+    ? formatMonthLabel(props.anchor)
+    : props.view === "day"
+      ? formatLongDay(props.anchor)
+      : `Week of ${formatDayLabel(props.weekDays[0] ?? props.anchor)}`;
   return (
     <Layout title="Schedule" user={props.viewer} path={props.path} notice={props.notice} usingDevSecret={props.usingDevSecret}>
-      <PageHead title="Schedule" lede={props.view === "day" ? formatLongDay(props.anchor) : `Week of ${formatDayLabel(props.weekDays[0] ?? props.anchor)}`}>
+      <PageHead title="Schedule" lede={lede}>
         <a class="btn" href={`/reservations/new?date=${props.anchor}`}>New reservation</a>
       </PageHead>
       <div class="toolbar">
         <div class="segmented" role="group" aria-label="Range">
           <a class={props.view === "day" ? "on" : ""} href={scheduleHref("day", props.board, props.anchor)}>Day</a>
           <a class={props.view === "week" ? "on" : ""} href={scheduleHref("week", props.board, props.anchor)}>Week</a>
+          <a class={props.view === "month" ? "on" : ""} href={scheduleHref("month", props.board, props.anchor)}>Month</a>
         </div>
         <div class="segmented" role="group" aria-label="Resources">
           <a class={props.board === "aircraft" ? "on" : ""} href={scheduleHref(props.view, "aircraft", props.anchor)}>Aircraft</a>
           <a class={props.board === "instructors" ? "on" : ""} href={scheduleHref(props.view, "instructors", props.anchor)}>Instructors</a>
         </div>
         <div class="pager">
-          <a class="btn secondary" href={scheduleHref(props.view, props.board, prev)} aria-label="Previous">←</a>
+          <a class="btn secondary" href={scheduleHref(props.view, props.board, prev)} aria-label={props.view === "month" ? "Previous month" : "Previous"}>←</a>
           <a class="btn secondary" href={scheduleHref(props.view, props.board, props.today)}>Today</a>
-          <a class="btn secondary" href={scheduleHref(props.view, props.board, next)} aria-label="Next">→</a>
+          <a class="btn secondary" href={scheduleHref(props.view, props.board, next)} aria-label={props.view === "month" ? "Next month" : "Next"}>→</a>
         </div>
         <form class="date-jump" method="get" action="/schedule">
           <input type="hidden" name="view" value={props.view} />
@@ -47,7 +54,9 @@ export function SchedulePage(props: {
           <button class="btn secondary" type="submit">Go</button>
         </form>
       </div>
-      {props.lanes.length === 0 ? (
+      {props.view === "month" ? (
+        <MonthGrid weeks={props.monthWeeks} today={props.today} board={props.board} />
+      ) : props.lanes.length === 0 ? (
         <p class="card card-pad">Nothing to put on this board yet. Add an aircraft{props.board === "instructors" ? " and an instructor" : ""} first.</p>
       ) : props.view === "day" ? (
         <div class="board-scroll card">
@@ -153,6 +162,57 @@ export function SchedulePage(props: {
         <span class="muted">Back-to-back times are allowed. Overlaps are not.</span>
       </p>
     </Layout>
+  );
+}
+
+function MonthGrid(props: { weeks: MonthDay[][]; today: string; board: string }) {
+  const labels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  return (
+    <div class="month-board card">
+      <div class="month-grid">
+        {labels.map((label) => (
+          <div class="month-dow" aria-hidden="true">{label}</div>
+        ))}
+        {props.weeks.flat().map((cell) => (
+          <div class={`month-cell${cell.inMonth ? "" : " outside"}${cell.day === props.today ? " today" : ""}`}>
+            <a class="month-num" href={scheduleHref("day", props.board, cell.day)} aria-label={`Open ${formatLongDay(cell.day)}`}>
+              {Number(cell.day.slice(8))}
+            </a>
+            <MonthList items={cell.items} />
+            {cell.items.length > 0 ? (
+              <details class="month-fold">
+                <summary aria-label={`${cell.items.length} on ${formatLongDay(cell.day)}`}>
+                  <span class="month-dots" aria-hidden="true">
+                    {cell.items.slice(0, 4).map((item) => (
+                      <i class={item.className}></i>
+                    ))}
+                  </span>
+                  <span class="month-count">{cell.items.length}</span>
+                </summary>
+                <MonthList items={cell.items} />
+              </details>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MonthList(props: { items: MonthDay["items"] }) {
+  return (
+    <ul class="month-list">
+      {props.items.map((item) => (
+        <li>
+          <a class={`chip ${item.className}`} href={item.href} aria-label={item.aria}>
+            <strong>{item.time}</strong>
+            <span>{item.title}</span>
+            {item.detail ? <em>{item.detail}</em> : null}
+            <small class="tail">{item.tail}</small>
+          </a>
+        </li>
+      ))}
+    </ul>
   );
 }
 

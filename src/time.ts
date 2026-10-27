@@ -90,6 +90,36 @@ export function addDays(day: string, days: number): string {
   return `${dt.getUTCFullYear()}-${month}-${date}`;
 }
 
+export function shiftMonth(day: string, delta: number): string {
+  const match = /^(\d{4})-(\d{2})-\d{2}$/.exec(day);
+  if (!match) throw new Error(`Invalid day: ${day}`);
+  const dt = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1 + delta, 1));
+  const month = String(dt.getUTCMonth() + 1).padStart(2, "0");
+  return `${dt.getUTCFullYear()}-${month}-01`;
+}
+
+export function monthGrid(anchor: string): { weeks: string[][] } {
+  const first = `${anchor.slice(0, 7)}-01`;
+  const start = startOfWeek(first);
+  const nextMonth = shiftMonth(first, 1);
+  const last = addDays(nextMonth, -1);
+  const end = addDays(startOfWeek(last), 6);
+  const days: string[] = [];
+  for (let day = start; day <= end; day = addDays(day, 1)) days.push(day);
+  const weeks: string[][] = [];
+  for (let index = 0; index < days.length; index += 7) weeks.push(days.slice(index, index + 7));
+  return { weeks };
+}
+
+export function formatMonthLabel(day: string, timeZone = TIME_ZONE): string {
+  const noon = zonedTimeToUtc(`${day.slice(0, 7)}-01T12:00`, timeZone);
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    month: "long",
+    year: "numeric",
+  }).format(noon);
+}
+
 export function startOfWeek(day: string, timeZone = TIME_ZONE): string {
   const noon = zonedTimeToUtc(`${day}T12:00`, timeZone);
   const weekday = new Intl.DateTimeFormat("en-US", {

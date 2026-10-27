@@ -1,6 +1,6 @@
 /** @jsxImportSource hono/jsx */
 import type { Context, Hono } from "hono";
-import { RESOURCE_TONES, buildDayBoard, buildWeekBoard, type BoardEvent, type BoardResource } from "./board";
+import { RESOURCE_TONES, buildDayBoard, buildMonthCalendar, buildWeekBoard, type BoardEvent, type BoardResource, type MonthEntry } from "./board";
 import { canBookDespiteEligibility, computeFlightCost, eligibilityAllowsBooking, pilotEligibility, validateReservationWindow } from "./domain";
 import { createEmailSender, reservationMessage, safeSend } from "./email";
 import { formatMoney, parseMeter } from "./format";
@@ -45,6 +45,7 @@ import {
   formatDayKey,
   formatLongDay,
   formatTime,
+  monthGrid,
   monthRange,
   parseDay,
   parseLocalDateTime,
@@ -109,12 +110,22 @@ export function registerSchedule(app: Hono<AppEnv>): void {
     const user = mustUser(c);
     const today = todayInZone();
     const anchor = parseDay(c.req.query("date") ?? "") ?? today;
-    const view = c.req.query("view") === "week" ? "week" : "day";
+    const requested = c.req.query("view");
+    const view = requested === "week" || requested === "month" ? requested : "day";
     const board = c.req.query("board") === "instructors" ? "instructors" : "aircraft";
     const weekStart = startOfWeek(anchor);
     const days = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
-    const rangeStart = view === "week" ? dayBounds(days[0]!).startIso : dayBounds(anchor).startIso;
-    const rangeEnd = view === "week" ? dayBounds(addDays(days[6]!, 1)).startIso : dayBounds(anchor).endIso;
+    const weeks = view === "month" ? monthGrid(anchor).weeks : [];
+    const rangeStart = view === "month"
+      ? dayBounds(weeks[0]?.[0] ?? anchor).startIso
+      : view === "week"
+        ? dayBounds(days[0]!).startIso
+        : dayBounds(anchor).startIso;
+    const rangeEnd = view === "month"
+      ? dayBounds(addDays(weeks.at(-1)?.at(-1) ?? anchor, 1)).startIso
+      : view === "week"
+        ? dayBounds(addDays(days[6]!, 1)).startIso
+        : dayBounds(anchor).endIso;
     const [aircraft, instructors, reservations, maintenance] = await Promise.all([
       listAircraft(c.env.DB),
       listInstructors(c.env.DB),
@@ -140,6 +151,7 @@ export function registerSchedule(app: Hono<AppEnv>): void {
           nowPct={dayBoard.nowPct}
           weekDays={days}
           weekRows={weekRows}
+          monthWeeks={buildMonthCalendar(weeks, anchor.slice(0, 7), monthEntries(reservations, maintenance, aircraft))}
         />,
       ),
     );
@@ -644,6 +656,39 @@ function instructorResources(instructors: User[], day: string): BoardResource[] 
     tone: RESOURCE_TONES[index % RESOURCE_TONES.length] ?? "#1d4e89",
     grounded: false,
   }));
+}
+
+function monthEntries(reservations: ScheduleEntry[], maintenance: MaintenanceBlock[], aircraft: Aircraft[]): MonthEntry[] {
+  const tails = new Map(aircraft.map((item) => [item.id, item.tailNumber]));
+  const flights: MonthEntry[] = reservations.map((entry) => {
+    const time = `${formatTime(entry.startsAt)}–${formatTime(entry.endsAt)}`;
+    const who = entry.instructorName ? `${entry.pilotName} with ${entry.instructorName}` : entry.pilotName;
+    return {
+      href: `/reservations/${entry.id}`,
+      startsAt: entry.startsAt,
+      endsAt: entry.endsAt,
+      className: blockClass(entry.status),
+      title: entry.pilotName,
+      detail: entry.instructorName ?? "",
+      tail: entry.tailNumber,
+      aria: `${entry.tailNumber}, ${time}, ${who}`,
+    };
+  });
+  const downtime: MonthEntry[] = maintenance.map((block) => {
+    const tail = tails.get(block.aircraftId) ?? "Aircraft";
+    const time = `${formatTime(block.startsAt)}–${formatTime(block.endsAt)}`;
+    return {
+      href: `/aircraft/${block.aircraftId}`,
+      startsAt: block.startsAt,
+      endsAt: block.endsAt,
+      className: "maint",
+      title: "Maintenance",
+      detail: block.reason,
+      tail,
+      aria: `${tail} maintenance ${time}, ${block.reason}`,
+    };
+  });
+  return [...flights, ...downtime];
 }
 
 function boardEvents(board: "aircraft" | "instructors", reservations: ScheduleEntry[], maintenance: MaintenanceBlock[], aircraft: Aircraft[]): BoardEvent[] {

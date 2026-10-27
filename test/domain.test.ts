@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { hashPassword, verifyPassword } from "../src/auth";
 import { computeFlightCost, pilotEligibility, validateReservationWindow } from "../src/domain";
 import { buildIcal, escapeText } from "../src/ical";
-import { addDays, clipToWindow, rangesOverlap, todayInZone, zonedTimeToUtc } from "../src/time";
+import { buildMonthCalendar } from "../src/board";
+import { addDays, clipToWindow, monthGrid, rangesOverlap, shiftMonth, todayInZone, zonedTimeToUtc } from "../src/time";
 
 describe("flight cost", () => {
   it("bills Hobbs tenths for the aircraft and the instructor", () => {
@@ -136,6 +137,57 @@ describe("time", () => {
 
   it("knows today's date in Pacific time", () => {
     expect(todayInZone(new Date("2026-10-26T06:30:00.000Z"))).toBe("2026-10-25");
+  });
+});
+
+describe("month calendar", () => {
+  it("starts weeks on Sunday and steps by month", () => {
+    const grid = monthGrid("2026-10-27");
+    expect(grid.weeks[0]?.[0]).toBe("2026-09-27");
+    expect(grid.weeks[0]?.[6]).toBe("2026-10-03");
+    expect(grid.weeks.every((week) => week.length === 7)).toBe(true);
+    expect(grid.weeks.at(-1)?.at(-1)).toBe("2026-10-31");
+    expect(shiftMonth("2026-10-27", -1)).toBe("2026-09-01");
+    expect(shiftMonth("2026-10-27", 1)).toBe("2026-11-01");
+    expect(shiftMonth("2026-01-15", -1)).toBe("2025-12-01");
+  });
+
+  it("keeps a Pacific evening flight on that calendar day and marks maintenance", () => {
+    const grid = monthGrid("2026-10-01");
+    const days = buildMonthCalendar(grid.weeks, "2026-10", [
+      {
+        href: "/reservations/late",
+        startsAt: "2026-10-01T06:00:00.000Z",
+        endsAt: "2026-10-01T06:40:00.000Z",
+        className: "scheduled",
+        title: "Priya Shah",
+        detail: "Juan Valdivia",
+        tail: "N1561Y",
+        aria: "late flight",
+      },
+      {
+        href: "/aircraft/n1561y",
+        startsAt: "2026-10-02T01:00:00.000Z",
+        endsAt: "2026-10-02T04:00:00.000Z",
+        className: "maint",
+        title: "Maintenance",
+        detail: "Oil and filter change",
+        tail: "N1561Y",
+        aria: "maintenance",
+      },
+    ]);
+    const flat = days.flat();
+    const sep30 = flat.find((day) => day.day === "2026-09-30");
+    const oct1 = flat.find((day) => day.day === "2026-10-01");
+    expect(sep30?.inMonth).toBe(false);
+    expect(sep30?.items.map((item) => item.title)).toEqual(["Priya Shah"]);
+    expect(sep30?.items[0]?.detail).toBe("Juan Valdivia");
+    expect(sep30?.items[0]?.tail).toBe("N1561Y");
+    expect(sep30?.items[0]?.time).toContain("11:00");
+    expect(oct1?.items.map((item) => item.title)).toEqual(["Maintenance"]);
+    expect(oct1?.items[0]?.className).toBe("maint");
+    expect(oct1?.items[0]?.detail).toBe("Oil and filter change");
+    expect(oct1?.items[0]?.time).toContain("6:00");
   });
 });
 
