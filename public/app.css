@@ -279,6 +279,8 @@ dd { margin: 0.1rem 0 0; }
   font-size: 0.72rem;
   color: var(--muted);
 }
+.gutter span:first-of-type { transform: none; }
+.gutter span:last-of-type { transform: translateY(-100%); }
 .now-line, .now-flag { background: #c2410c; }
 .now-line { position: absolute; left: 0; right: 0; height: 2px; z-index: 2; }
 .now-flag { width: 8px; height: 8px; border-radius: 99px; right: 2px; }
