@@ -1,8 +1,9 @@
 import { env, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
-import { hashPassword, newToken } from "../src/auth";
+import { hashPassword, newToken, UNUSABLE_PASSWORD_HASH, verifyPassword } from "../src/auth";
+import prodSeedSql from "../scripts/prod-seed.sql";
 import { buildDemoSeedSql } from "../src/demo_seed";
-import { insertAircraft, insertUser, upsertCheckout } from "../src/db";
+import { insertAdminIfNone, insertAircraft, insertUser, upsertCheckout } from "../src/db";
 import { addDays, todayInZone } from "../src/time";
 import type { Aircraft, User } from "../src/types";
 
@@ -96,7 +97,8 @@ function sessionCookie(response: Response): string {
   return `rampboard_session=${token}`;
 }
 
-async function login(email: string): Promise<string> {
+async function login(email: string | null): Promise<string> {
+  if (!email) throw new Error("This test user has no email.");
   const response = await post("/login", { email, password: "Pattern123!" });
   expect(response.status).toBe(303);
   return sessionCookie(response);
@@ -123,6 +125,87 @@ describe("auth and fleet", () => {
     expect(home.status).toBe(200);
     expect(await home.text()).toContain("Dispatch");
     expect((await get("/setup", cookie)).status).toBe(404);
+    const again = await post("/setup", {
+      name: "Someone Else",
+      email: "other@example.com",
+      password: "Pattern123!",
+      confirm: "Pattern123!",
+    });
+    expect(again.status).toBe(404);
+    const admins = await db().prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin'").first<{ n: number }>();
+    expect(Number(admins?.n)).toBe(1);
+    const duplicate = await insertAdminIfNone(db(), {
+      id: crypto.randomUUID(),
+      email: "third@example.com",
+      passwordHash: await hashPassword("Pattern123!"),
+      name: "Third",
+      role: "admin",
+      phone: null,
+      certificateType: null,
+      certificateNumber: null,
+      medicalClass: null,
+      medicalExpiration: null,
+      instructorRateCents: null,
+      icalToken: newToken(),
+      createdAt: new Date().toISOString(),
+    });
+    expect(duplicate).toBe(false);
+    expect(Number((await db().prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin'").first<{ n: number }>())?.n)).toBe(1);
+  });
+
+  it("lets the first visitor create an admin when Juan is already on the list, and Juan cannot sign in", async () => {
+    await db().exec(prodSeedSql);
+    await db().exec(prodSeedSql);
+    const aircraft = await db().prepare("SELECT COUNT(*) AS n FROM aircraft").first<{ n: number }>();
+    const people = await db().prepare("SELECT COUNT(*) AS n FROM users").first<{ n: number }>();
+    const reservations = await db().prepare("SELECT COUNT(*) AS n FROM reservations").first<{ n: number }>();
+    expect(Number(aircraft?.n)).toBe(1);
+    expect(Number(people?.n)).toBe(1);
+    expect(Number(reservations?.n)).toBe(0);
+    const juan = await db()
+      .prepare("SELECT email, password_hash, instructor_rate_cents, role FROM users WHERE name = 'Juan Valdivia'")
+      .first<{ email: string | null; password_hash: string; instructor_rate_cents: number; role: string }>();
+    expect(juan?.role).toBe("instructor");
+    expect(juan?.email).toBeNull();
+    expect(juan?.password_hash).toBe(UNUSABLE_PASSWORD_HASH);
+    expect(juan?.instructor_rate_cents).toBe(7500);
+    expect(await verifyPassword("disabled", UNUSABLE_PASSWORD_HASH)).toBe(false);
+    expect(await verifyPassword("Pattern123!", UNUSABLE_PASSWORD_HASH)).toBe(false);
+    const plane = await db()
+      .prepare("SELECT tail_number, model, hourly_wet_cents, hourly_dry_cents, hobbs, tach FROM aircraft")
+      .first<{ tail_number: string; model: string; hourly_wet_cents: number; hourly_dry_cents: number | null; hobbs: number | null; tach: number | null }>();
+    expect(plane?.tail_number).toBe("N1561Y");
+    expect(plane?.model).toBe("172C");
+    expect(plane?.hourly_wet_cents).toBe(15500);
+    expect(plane?.hourly_dry_cents).toBeNull();
+    expect(plane?.hobbs).toBeNull();
+    expect(plane?.tach).toBeNull();
+    const before = await get("/");
+    expect(before.status).toBe(302);
+    expect(before.headers.get("location")).toBe("/setup");
+    expect((await get("/login")).status).toBe(302);
+    const created = await post("/setup", {
+      name: "Kyle Bushman",
+      email: "kyle@example.com",
+      password: "Pattern123!",
+      confirm: "Pattern123!",
+    });
+    expect(created.status).toBe(303);
+    expect((await get("/setup")).status).toBe(404);
+    const blocked = await post("/setup", {
+      name: "Someone Else",
+      email: "other@example.com",
+      password: "Pattern123!",
+      confirm: "Pattern123!",
+    });
+    expect(blocked.status).toBe(404);
+    await db().prepare("UPDATE users SET email = ? WHERE name = 'Juan Valdivia'").bind("juan.valdivia@example.com").run();
+    const juanLogin = await post("/login", { email: "juan.valdivia@example.com", password: "Pattern123!" });
+    expect(juanLogin.status).toBe(401);
+    const juanWord = await post("/login", { email: "juan.valdivia@example.com", password: "disabled" });
+    expect(juanWord.status).toBe(401);
+    expect(Number((await db().prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin'").first<{ n: number }>())?.n)).toBe(1);
+    expect(Number((await db().prepare("SELECT COUNT(*) AS n FROM users WHERE name = 'Juan Valdivia'").first<{ n: number }>())?.n)).toBe(1);
   });
 
   it("rejects a bad password and lets an admin add an aircraft", async () => {
@@ -154,6 +237,7 @@ describe("auth and fleet", () => {
   });
 
   it("stops a pilot from editing the fleet", async () => {
+    await makeUser({ email: "owner@example.com", name: "Owner Admin", role: "admin" });
     await makeUser({ email: "pilot@example.com", name: "Priya Shah", role: "renter" });
     const cookie = await login("pilot@example.com");
     const response = await post("/aircraft", { tail_number: "N1", make: "Cessna", model: "152", wet: "10", dry: "8" }, cookie);
@@ -339,6 +423,7 @@ describe("scheduling", () => {
   });
 
   it("refuses a dry booking when the airplane has no dry rate", async () => {
+    await makeUser({ email: "owner@example.com", name: "Owner Admin", role: "admin" });
     const pilot = await makeUser({ email: "pilot@example.com", name: "Priya Shah", role: "renter" });
     const aircraft = await makeAircraft({ tailNumber: "N1561Y", model: "172C", hourlyWetCents: 15500, hourlyDryCents: null });
     await upsertCheckout(db(), { userId: pilot.id, aircraftId: aircraft.id, status: "current", checkedOutOn: todayInZone(), expiresOn: null });
@@ -353,6 +438,7 @@ describe("scheduling", () => {
   });
 
   it("checks out, checks in, and stores Hobbs cost", async () => {
+    await makeUser({ email: "owner@example.com", name: "Owner Admin", role: "admin" });
     const pilot = await makeUser({ email: "pilot@example.com", name: "Priya Shah", role: "renter" });
     const instructor = await makeUser({ email: "cfi@example.com", name: "Maya Chen", role: "instructor", instructorRateCents: 7500 });
     const aircraft = await makeAircraft({ hourlyWetCents: 15500, hourlyDryCents: null, hobbs: 100, tach: 80 });
@@ -391,6 +477,7 @@ describe("scheduling", () => {
   });
 
   it("cancels a reservation and frees the airplane", async () => {
+    await makeUser({ email: "owner@example.com", name: "Owner Admin", role: "admin" });
     const pilot = await makeUser({ email: "pilot@example.com", name: "Priya Shah", role: "renter" });
     const other = await makeUser({ email: "other@example.com", name: "Jordan Hale", role: "renter" });
     const aircraft = await makeAircraft();
@@ -417,6 +504,7 @@ describe("scheduling", () => {
   });
 
   it("publishes an iCal feed for the pilot and drops cancelled flights", async () => {
+    await makeUser({ email: "owner@example.com", name: "Owner Admin", role: "admin" });
     const pilot = await makeUser({ email: "pilot@example.com", name: "Priya Shah", role: "renter", icalToken: "demo-feed-token" });
     const aircraft = await makeAircraft();
     await upsertCheckout(db(), { userId: pilot.id, aircraftId: aircraft.id, status: "current", checkedOutOn: todayInZone(), expiresOn: null });

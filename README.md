@@ -58,9 +58,11 @@ The instructor is **Juan Valdivia** at **$75 an hour**. The pilots (Priya, Luis,
 
 Change these passwords before anyone outside your office uses the site. The phone numbers and `@example.com` addresses are not real.
 
-**Seeding deletes everything already in the database** and replaces it with the sample. That includes real reservations if you run it again later. On your computer that is fine while you are trying it out. Do not run the remote seed (below) against a database that already has real flights.
+**This local sample seed deletes everything already in the database** and replaces it with the sample, including real reservations if you run it again later. On your computer that is fine while you are trying the board. Do not run `npm run db:seed:local` or `npm run db:seed:remote` against the live Cloudflare database.
 
-If you skip the seed, the first visit opens a one-time setup page and creates the first admin. After that, only an admin can add people. There is no public sign-up.
+The live database uses a different seed, `scripts/prod-seed.sql` (or `npm run db:seed:prod -- --yes`). That file adds only N1561Y and Juan Valdivia. It does not add fake pilots, reservations, or Hobbs and tach numbers, and it does not delete rows that are already there. Juan has no email and no sign-in. After the site is up, the first visitor creates the admin account. Once any admin exists, that setup page stays closed. Add Juan’s email and a password later under People.
+
+If you skip every seed, the first visit still opens setup and creates the admin. There is no public sign-up.
 
 ### Local sign-in secret
 
@@ -76,70 +78,44 @@ Stop the app with Ctrl+C in the same terminal.
 
 ## Put it on Cloudflare
 
-Do this once, from the same project folder, after you have a free [Cloudflare account](https://dash.cloudflare.com/sign-up). Nothing in this repository is already deployed.
+Do this once, from the project folder, on a computer that has your Cloudflare API token. Nothing in this repository is already deployed. The free plan is enough. `wrangler.jsonc` does not ask for a CPU limit the free plan would reject.
 
-1. Install the project the same way as above (`npm install`) if you have not already.
-2. Log in:
+The token needs permission to edit Workers scripts, edit D1, and read the account. Create it under My Profile → API Tokens. Do not commit the token, and do not paste it into the chat.
 
-   ```bash
-   npx wrangler login
-   ```
+```bash
+npm install
+export CLOUDFLARE_API_TOKEN='paste-the-token-here'
+bash scripts/deploy-prod.sh
+```
 
-   A browser window opens. Approve access for the Cloudflare account that should own the site.
+If that token can see more than one Cloudflare account, the script stops and lists the account ids. Run it again with the right one:
 
-3. Create the database:
+```bash
+export CLOUDFLARE_ACCOUNT_ID='the-account-id-from-the-list'
+bash scripts/deploy-prod.sh
+```
 
-   ```bash
-   npx wrangler d1 create rampboard
-   ```
+The script looks up the account, creates the D1 database named `rampboard` if needed, writes that database id into `wrangler.jsonc`, creates the tables, and adds N1561Y and Juan only when the fleet is empty. It generates the sign-in secret and stores it with `wrangler secret put` when one is not already stored. It does not print the token or the secret. Then it publishes the site and prints the `*.workers.dev` address.
 
-   Cloudflare prints a `database_id` that looks like `a1b2c3d4-....`. Copy that value.
+Open that address. The first page asks you to create the admin account with your own email and password. After that, setup closes. Juan is already on the People list at $75 an hour, with no email and no way to sign in. N1561Y is the airplane at $155 an hour wet, and the dry rate is blank. Under People, add Juan’s email and a password when you have them.
 
-4. Open `wrangler.jsonc` in a text editor. Replace the placeholder `database_id` (`00000000-0000-0000-0000-000000000000`) with the id from the previous step. Save the file. Leave the binding name as `DB` and the database name as `rampboard`.
+If the account has never used Workers, it may not have a `workers.dev` name yet. The script tries to register one. If Cloudflare refuses, the script prints a dashboard link. Choose a name there, then run `bash scripts/deploy-prod.sh` again. The second run will not add another airplane.
 
-5. Create the tables on Cloudflare:
+You can also do the same steps by hand:
 
-   ```bash
-   npm run db:migrate:remote
-   ```
+1. `npx wrangler login`
+2. `npx wrangler d1 create rampboard`
+3. Paste the printed `database_id` into `wrangler.jsonc` in place of `00000000-0000-0000-0000-000000000000`. `scripts/deploy-prod.sh` does this for you.
+4. `npm run db:migrate:remote`
+5. `npm run db:seed:prod -- --yes` (only on an empty fleet)
+6. `npx wrangler secret put SESSION_SECRET` with a long random string. Changing it later signs everyone out. Passwords stay the same.
+7. `npm run deploy`
 
-   When it asks for confirmation, answer yes.
+Do not run `npm run db:seed:remote` on the live database. That command erases the database and loads the fake pilots.
 
-6. Set the sign-in secret **before** you create any real accounts:
+Later code changes are `npm run deploy`, or another run of `bash scripts/deploy-prod.sh`. If a future update adds a file under `migrations/`, the script applies it. The production seed runs only while the aircraft table is empty.
 
-   ```bash
-   npx wrangler secret put SESSION_SECRET
-   ```
-
-   Paste a long random string (a password manager can generate one) and press Enter. The characters will not show as you paste. That is normal. This secret is not stored in the git repository. If you change it later, everyone has to sign in again. Passwords stay the same.
-
-7. Publish the site:
-
-   ```bash
-   npm run deploy
-   ```
-
-   Wrangler prints a `*.workers.dev` address. That is your site. Open it, and either load sample data (next step) or use the one-time setup page to create your admin account.
-
-8. Optional: load the fake sample data onto Cloudflare. This **erases** whatever is already in that database.
-
-   ```bash
-   npm run db:seed:remote -- --yes
-   ```
-
-   Without `--yes`, the command refuses to run. After you are done looking at the sample, create your real admin, delete the sample people, and do not seed again.
-
-Later changes to the site are the same last command: `npm run deploy`. If a future update adds a new file under `migrations/`, run `npm run db:migrate:remote` again before or right after deploying.
-
-### If deploy complains about `cpu_ms`
-
-Password checks are intentionally slow so stolen password hashes are harder to guess. `wrangler.jsonc` asks Cloudflare for 30 seconds of CPU time for that. Some free accounts reject `limits.cpu_ms`. If deploy fails for that reason:
-
-1. Delete the whole `limits` block from `wrangler.jsonc`.
-2. In `src/auth.ts`, change `PBKDF2_ITERATIONS` from `100_000` to `10000`.
-3. Run `npm run deploy` again.
-
-Do this before you create accounts. Existing passwords keep the iteration count they were saved with, so you do not have to reset them if you change the number later. A higher number is safer. Raise it again if you move to a Workers plan that allows the CPU limit.
+Password checks use 10,000 rounds so they fit the free plan’s CPU limit. The number is `PBKDF2_ITERATIONS` in `src/auth.ts`. Existing passwords keep the count they were saved with. A paid Workers plan can raise that number.
 
 ## Day-to-day use
 
@@ -177,7 +153,9 @@ To send real mail later, replace `OutboxEmailSender` in `src/email.ts` with a cl
 | `npm run db:migrate:local` | Creates the tables in the local database |
 | `npm run db:migrate:remote` | Creates the tables in Cloudflare |
 | `npm run db:seed:local` | Replaces the local database with sample data |
-| `npm run db:seed:remote -- --yes` | Replaces the Cloudflare database with sample data |
+| `npm run db:seed:remote -- --yes` | Replaces the Cloudflare database with the fake sample. Do not use this on the live site |
+| `npm run db:seed:prod -- --yes` | Adds N1561Y and Juan Valdivia to Cloudflare. Does not delete existing rows |
+| `bash scripts/deploy-prod.sh` | Creates the database, migrates, seeds production if the fleet is empty, sets the sign-in secret, and publishes |
 | `npm run deploy` | Publishes the site. Requires the steps in “Put it on Cloudflare” first |
 
 ## Project layout

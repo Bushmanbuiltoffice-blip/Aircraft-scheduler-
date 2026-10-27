@@ -3,11 +3,7 @@
   "name": "rampboard",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-22",
-  // Password checks are deliberately slow. Paid Workers accounts can raise the
-  // CPU limit below. If deploy rejects cpu_ms, see the README troubleshooting.
-  "limits": {
-    "cpu_ms": 30000
-  },
+  // The Workers free plan rejects a limits.cpu_ms setting. Leave it unset.
   "assets": {
     "directory": "./public"
   },
@@ -21,6 +17,8 @@
     {
       "binding": "DB",
       "database_name": "rampboard",
+      // scripts/deploy-prod.sh replaces this when it creates the database.
+      // To fill it in by hand, paste the id from `npx wrangler d1 create rampboard`.
       "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations"
     }

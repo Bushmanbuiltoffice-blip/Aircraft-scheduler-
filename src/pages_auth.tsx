@@ -31,7 +31,7 @@ export function SetupPage(props: { errors?: string[]; name?: string; email?: str
     <GuestShell
       title="Create the owner account"
       kicker="First-time setup"
-      lede="Nobody has an account yet. Create the owner login, then add airplanes and pilots. This page closes itself after the first account exists."
+      lede="Create the owner login with your own email and password. This page closes for good once an admin exists. People who are already on the list, such as an instructor without an email, stay on the list."
     >
       <h2>Create the owner account</h2>
       <Errors errors={props.errors} />

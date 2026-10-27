@@ -547,8 +547,11 @@ async function parsePerson(
   };
   const errors: string[] = [];
   if (values.name.length < 2 || values.name.length > 120) errors.push("Enter a name.");
-  const emailProblem = emailError(values.email);
-  if (emailProblem) errors.push(emailProblem);
+  if (role === "admin" && !values.email) errors.push("An admin needs an email address to sign in.");
+  if (values.email) {
+    const emailProblem = emailError(values.email);
+    if (emailProblem) errors.push(emailProblem);
+  }
   if (values.phone.length > 40) errors.push("Phone number is too long.");
   if (!CERTS.has(values.certificateType as CertificateType)) errors.push("Choose a certificate type.");
   if (values.certificateNumber.length > 40) errors.push("Certificate number is too long.");
@@ -581,7 +584,7 @@ async function parsePerson(
     errors,
     draft: {
       id: input.current?.id ?? crypto.randomUUID(),
-      email: values.email,
+      email: blankToNull(values.email),
       passwordHash,
       name: values.name,
       role,

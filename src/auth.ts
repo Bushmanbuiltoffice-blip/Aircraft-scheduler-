@@ -1,5 +1,11 @@
-/** Stored in each hash. Lower this only if a free Cloudflare account rejects logins. */
-export const PBKDF2_ITERATIONS = 100_000;
+/**
+ * Stored in each new hash. 10,000 fits the Cloudflare free-plan CPU limit.
+ * A paid Workers plan can raise this. Existing hashes keep the count they were saved with.
+ */
+export const PBKDF2_ITERATIONS = 10_000;
+
+/** Stored on profiles that must not be able to sign in. Not a password. */
+export const UNUSABLE_PASSWORD_HASH = "disabled";
 
 export const DEV_SESSION_SECRET = "dev-insecure-session-secret";
 

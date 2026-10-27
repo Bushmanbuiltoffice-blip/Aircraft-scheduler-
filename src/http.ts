@@ -26,7 +26,7 @@ export function checked(data: Record<string, string>, key: string): boolean {
 }
 
 export function viewerOf(user: User): Viewer {
-  return { id: user.id, name: user.name, email: user.email, role: user.role };
+  return { id: user.id, name: user.name, email: user.email ?? "", role: user.role };
 }
 
 export function setSessionCookie(c: Context<AppEnv>, token: string): void {

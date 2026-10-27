@@ -1,7 +1,7 @@
 /** @jsxImportSource hono/jsx */
 import { Hono } from "hono";
 import { sessionSecret } from "./auth";
-import { countUsers, userForSession } from "./db";
+import { countAdmins, userForSession } from "./db";
 import { readSessionCookie } from "./http";
 import { registerAuth } from "./routes_auth";
 import { registerFleet } from "./routes_fleet";
@@ -41,9 +41,9 @@ export function createApp(): Hono<AppEnv> {
       await next();
       return;
     }
-    let count = 0;
+    let admins = 0;
     try {
-      count = await countUsers(c.env.DB);
+      admins = await countAdmins(c.env.DB);
     } catch (error) {
       if (error instanceof Error && /no such table/i.test(error.message)) {
         return c.html(
@@ -58,8 +58,8 @@ export function createApp(): Hono<AppEnv> {
       }
       throw error;
     }
-    if (count === 0 && path !== "/setup") return c.redirect("/setup");
-    if (count > 0 && path === "/setup") return c.notFound();
+    if (admins === 0 && path !== "/setup" && path !== "/health") return c.redirect("/setup");
+    if (admins > 0 && path === "/setup") return c.notFound();
     const { secret, usingDevFallback } = sessionSecret(c.env);
     c.set("usingDevSecret", usingDevFallback);
     const token = readSessionCookie(c);

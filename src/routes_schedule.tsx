@@ -603,10 +603,10 @@ async function notify(db: D1Database, entry: ScheduleEntry, kind: "booked" | "up
   const when = `${formatDateTime(entry.startsAt)}–${formatTime(entry.endsAt)}`;
   const recipients: Array<{ email: string; name: string }> = [];
   const pilot = await getUserById(db, entry.pilotId);
-  if (pilot) recipients.push({ email: pilot.email, name: pilot.name });
+  if (pilot?.email) recipients.push({ email: pilot.email, name: pilot.name });
   if (entry.instructorId) {
     const instructor = await getUserById(db, entry.instructorId);
-    if (instructor && instructor.id !== pilot?.id) recipients.push({ email: instructor.email, name: instructor.name });
+    if (instructor?.email && instructor.id !== pilot?.id) recipients.push({ email: instructor.email, name: instructor.name });
   }
   for (const recipient of recipients) {
     const message = reservationMessage({

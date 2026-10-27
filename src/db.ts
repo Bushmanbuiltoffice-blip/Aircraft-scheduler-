@@ -17,7 +17,7 @@ import type {
 
 type UserRow = {
   id: string;
-  email: string;
+  email: string | null;
   password_hash: string;
   name: string;
   role: Role;
@@ -130,6 +130,34 @@ export async function countUsers(db: D1Database): Promise<number> {
   return Number(row?.n ?? 0);
 }
 
+export async function insertAdminIfNone(db: D1Database, user: NewUser): Promise<boolean> {
+  const result = await db
+    .prepare(
+      `INSERT INTO users (
+        id, email, password_hash, name, role, phone, certificate_type, certificate_number,
+        medical_class, medical_expiration, instructor_rate_cents, ical_token, created_at
+      )
+      SELECT ?, ?, ?, ?, 'admin', ?, ?, ?, ?, ?, ?, ?, ?
+      WHERE NOT EXISTS (SELECT 1 FROM users WHERE role = 'admin')`,
+    )
+    .bind(
+      user.id,
+      user.email,
+      user.passwordHash,
+      user.name,
+      user.phone,
+      user.certificateType,
+      user.certificateNumber,
+      user.medicalClass,
+      user.medicalExpiration,
+      user.instructorRateCents,
+      user.icalToken,
+      user.createdAt,
+    )
+    .run();
+  return Number(result.meta.changes ?? 0) > 0;
+}
+
 export async function countAdmins(db: D1Database, exceptId?: string): Promise<number> {
   const row = exceptId
     ? await db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND id != ?").bind(exceptId).first<{ n: number }>()
@@ -164,7 +192,7 @@ export async function listInstructors(db: D1Database): Promise<User[]> {
 
 export type NewUser = {
   id: string;
-  email: string;
+  email: string | null;
   passwordHash: string;
   name: string;
   role: Role;

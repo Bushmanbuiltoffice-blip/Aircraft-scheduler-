@@ -47,7 +47,7 @@ export function PeoplePage(props: {
           <tbody>
             {props.people.map((person) => (
               <tr>
-                <td><a href={`/pilots/${person.id}`}>{person.name}</a><small class="muted">{person.email}</small></td>
+                <td><a href={`/pilots/${person.id}`}>{person.name}</a><small class="muted">{person.email || "No email yet"}</small></td>
                 <td>{roleLabel(person.role)}</td>
                 <td>{certificateLabel(person.certificateType)}</td>
                 <td>
@@ -99,7 +99,7 @@ export function PersonFormPage(props: {
           </label>
           <label>
             Email
-            <input type="email" name="email" required value={props.values.email} />
+            <input type="email" name="email" value={props.values.email} placeholder="Leave blank if they have no email yet" />
           </label>
           <label>
             Phone
@@ -253,7 +253,7 @@ export function AccountPassword(props: { viewer: Viewer; path: string; usingDevS
 export function personToForm(user: User): PersonFormValues {
   return {
     name: user.name,
-    email: user.email,
+    email: user.email ?? "",
     role: user.role,
     phone: user.phone ?? "",
     certificateType: user.certificateType ?? "none",

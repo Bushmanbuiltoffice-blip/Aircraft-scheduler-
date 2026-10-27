@@ -9,10 +9,10 @@ import {
   sessionSecret,
   verifyPassword,
 } from "./auth";
-import { createSession, deleteSession, getUserByEmail, insertUser, isUniqueError } from "./db";
+import { createSession, deleteSession, getUserByEmail, insertAdminIfNone, isUniqueError } from "./db";
 import { clearSessionCookie, field, readForm, readSessionCookie, safeNext, setSessionCookie } from "./http";
 import { LoginPage, SetupPage } from "./pages_auth";
-import { document } from "./ui";
+import { document, SimpleMessage } from "./ui";
 import { SESSION_DAYS, type AppEnv } from "./types";
 
 export function registerAuth(app: Hono<AppEnv>): void {
@@ -62,7 +62,7 @@ export function registerAuth(app: Hono<AppEnv>): void {
     if (errors.length) return c.html(document(<SetupPage errors={errors} name={name} email={email} />), 422);
     const userId = crypto.randomUUID();
     try {
-      await insertUser(c.env.DB, {
+      const created = await insertAdminIfNone(c.env.DB, {
         id: userId,
         email,
         passwordHash: await hashPassword(password),
@@ -77,6 +77,9 @@ export function registerAuth(app: Hono<AppEnv>): void {
         icalToken: newToken(),
         createdAt: new Date().toISOString(),
       });
+      if (!created) {
+        return c.html(document(<SimpleMessage title="Setup is closed" message="An admin account already exists. Sign in instead." />), 404);
+      }
     } catch (error) {
       if (isUniqueError(error)) {
         return c.html(document(<SetupPage errors={["That email is already in use."]} name={name} email={email} />), 422);

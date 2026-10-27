@@ -13,7 +13,8 @@
     "db:migrate:local": "wrangler d1 migrations apply rampboard --local",
     "db:migrate:remote": "wrangler d1 migrations apply rampboard --remote",
     "db:seed:local": "tsx scripts/seed.ts --local",
-    "db:seed:remote": "tsx scripts/seed.ts --remote"
+    "db:seed:remote": "tsx scripts/seed.ts --remote",
+    "db:seed:prod": "tsx scripts/seed-prod.ts"
   },
   "engines": {
     "node": ">=22"

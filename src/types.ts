@@ -38,7 +38,7 @@ export type AppEnv = {
 
 export interface User {
   id: string;
-  email: string;
+  email: string | null;
   passwordHash: string;
   name: string;
   role: Role;
