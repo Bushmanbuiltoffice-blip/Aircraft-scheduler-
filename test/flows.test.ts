@@ -518,7 +518,10 @@ describe("scheduling", () => {
     const id = /\/reservations\/([^?]+)/.exec(booked.headers.get("location") ?? "")?.[1];
     const feed = await get("/ical/demo-feed-token");
     expect(feed.headers.get("content-type")).toContain("text/calendar");
-    expect(await feed.text()).toContain("N172RB");
+    const feedBody = await feed.text();
+    expect(feedBody).toContain("N172RB");
+    expect(feedBody).toContain("Priya Shah · Firehound Rental");
+    expect(feedBody).toContain("PRODID:-//Firehound Rental//EN");
     await post(`/reservations/${id}/cancel`, {}, cookie);
     const after = await get("/ical/demo-feed-token");
     expect(await after.text()).not.toContain("N172RB");

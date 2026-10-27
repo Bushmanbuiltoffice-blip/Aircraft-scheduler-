@@ -53,7 +53,7 @@ import {
   zonedTimeToUtc,
 } from "./time";
 import type { Aircraft, AppEnv, MaintenanceBlock, RateBasis, ReservationStatus, ScheduleEntry, User } from "./types";
-import { TIME_ZONE } from "./types";
+import { ORG_NAME, TIME_ZONE } from "./types";
 
 export function registerSchedule(app: Hono<AppEnv>): void {
   app.get("/", async (c) => {
@@ -330,7 +330,7 @@ export function registerSchedule(app: Hono<AppEnv>): void {
       description: [`Status: ${entry.status}`, entry.notes ?? ""].filter(Boolean).join("\n"),
       status: "CONFIRMED" as const,
     }));
-    return c.body(buildIcal(events, `${owner.name} · Rampboard`), 200, {
+    return c.body(buildIcal(events, `${owner.name} · ${ORG_NAME}`), 200, {
       "content-type": "text/calendar; charset=utf-8",
       "cache-control": "private, max-age=300",
     });

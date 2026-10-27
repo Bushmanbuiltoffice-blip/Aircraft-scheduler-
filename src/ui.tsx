@@ -40,7 +40,7 @@ export function Layout(props: {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="robots" content="noindex" />
         <meta name="theme-color" content="#12263a" />
-        <title>{props.title} · Rampboard</title>
+        <title>{props.title} · {ORG_NAME}</title>
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
@@ -54,10 +54,10 @@ export function Layout(props: {
         <a class="skip" href="#content">Skip to content</a>
         <header class="topbar">
           <a class="brand" href="/">
-            <span class="brand-mark" aria-hidden="true">R</span>
+            <span class="brand-mark" aria-hidden="true">F</span>
             <span>
-              <strong>Rampboard</strong>
-              <small>{ORG_NAME} · 77S</small>
+              <strong>{ORG_NAME}</strong>
+              <small>{FIELD_NAME}</small>
             </span>
           </a>
           <input id="nav-check" class="nav-check" type="checkbox" />
@@ -111,7 +111,7 @@ export function GuestShell(props: { title: string; kicker: string; lede: string;
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="robots" content="noindex" />
-        <title>{props.title} · Rampboard</title>
+        <title>{props.title} · {ORG_NAME}</title>
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
@@ -124,8 +124,8 @@ export function GuestShell(props: { title: string; kicker: string; lede: string;
       <body class="guest-body">
         <div class="login-shell">
           <section class="login-hero">
-            <p class="eyebrow">{ORG_NAME}</p>
-            <h1>Rampboard</h1>
+            <p class="eyebrow">{FIELD_NAME}</p>
+            <h1>{ORG_NAME}</h1>
             <p>{props.lede}</p>
             <ul class="hero-list">
               <li><span>77S</span> Hobby Field, Creswell</li>
@@ -183,14 +183,14 @@ export function SimpleMessage(props: { title: string; message: string }) {
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>{props.title} · Rampboard</title>
+        <title>{props.title} · {ORG_NAME}</title>
         <link rel="stylesheet" href="/app.css" />
       </head>
       <body>
         <main class="wrap narrow">
           <h1>{props.title}</h1>
           <p>{props.message}</p>
-          <p><a href="/">Back to Rampboard</a></p>
+          <p><a href="/">Back to {ORG_NAME}</a></p>
         </main>
       </body>
     </html>

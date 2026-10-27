@@ -153,8 +153,10 @@ describe("ical and passwords", () => {
           status: "CONFIRMED",
         },
       ],
-      "Rampboard",
+      "Firehound Rental",
     );
+    expect(body).toContain("PRODID:-//Firehound Rental//EN");
+    expect(body).toContain("X-WR-CALNAME:Firehound Rental");
     expect(body).toContain("BEGIN:VCALENDAR");
     expect(body).toContain("DTSTART:20261026T170000Z");
   });

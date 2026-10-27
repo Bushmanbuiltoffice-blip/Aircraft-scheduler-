@@ -3,7 +3,7 @@ export const SESSION_COOKIE = "rampboard_session";
 export const SESSION_DAYS = 14;
 // Shown on every page, in calendar feeds, and in notification text.
 // Change this one string to rename the operation.
-export const ORG_NAME = "Bushman Aviation";
+export const ORG_NAME = "Firehound Rental";
 export const FIELD_NAME = "Hobby Field (77S), Creswell";
 
 export type Role = "admin" | "instructor" | "renter";

@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "rampboard",
+  "name": "firehound-rental",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-22",
   // The Workers free plan rejects a limits.cpu_ms setting. Leave it unset.

@@ -2,7 +2,7 @@
   "name": "rampboard",
   "version": "1.0.0",
   "private": true,
-  "description": "Aircraft rental and instruction scheduling for Bushman Aviation",
+  "description": "Aircraft rental and instruction scheduling for Firehound Rental",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",

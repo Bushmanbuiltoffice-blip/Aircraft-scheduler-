@@ -14,7 +14,7 @@ export function buildIcal(events: IcalEvent[], calendarName: string): string {
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    `PRODID:-//${ORG_NAME}//Rampboard//EN`,
+    `PRODID:-//${ORG_NAME}//EN`,
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     `X-WR-CALNAME:${escapeText(calendarName)}`,

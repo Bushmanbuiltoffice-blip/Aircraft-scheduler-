@@ -201,7 +201,7 @@ export async function buildDemoSeedSql(now = new Date()): Promise<string> {
       sql(id("mail", 1)),
       sql("priya.shah@example.com"),
       sql("N1561Y reservation confirmed"),
-      sql(`Hi Priya Shah, your ${ORG_NAME} reservation was confirmed for N1561Y. This note was recorded by Rampboard. No email provider is connected yet.`),
+      sql(`Hi Priya Shah, your ${ORG_NAME} reservation was confirmed for N1561Y. This note was recorded by ${ORG_NAME}. No email provider is connected yet.`),
       sql(created),
     ].join(", ")});`,
   );

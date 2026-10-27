@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Publish Rampboard to Cloudflare without prompts.
+# Publish Firehound Rental to Cloudflare without prompts.
 #
 # From the project folder, on the machine that has the API token:
 #
@@ -10,9 +10,11 @@
 #
 #   export CLOUDFLARE_ACCOUNT_ID='the-account-id'
 #
-# The token is never printed. The sign-in secret is generated and stored in
-# Cloudflare, and it is never printed. This script does not load the fake
-# sample pilots. It adds N1561Y and Juan Valdivia only when the fleet is empty.
+# The token is never printed. The sign-in secret is generated and stored on
+# the Worker named in wrangler.jsonc, and it is never printed. A new Worker
+# name does not have the previous secret, so this script sets one. The D1
+# database stays named rampboard. This script does not load the fake sample
+# pilots. It adds N1561Y and Juan Valdivia only when the fleet is empty.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -29,6 +31,18 @@ for tool in curl node npx; do
     exit 1
   fi
 done
+
+WORKER_NAME="$(node --input-type=module -e '
+  import { readFileSync } from "node:fs";
+  const text = readFileSync("wrangler.jsonc", "utf8");
+  const match = text.match(/"name"\s*:\s*"([a-z0-9-]+)"/);
+  if (!match) {
+    console.error("Could not read the Worker name from wrangler.jsonc.");
+    process.exit(1);
+  }
+  process.stdout.write(match[1]);
+')"
+echo "Publishing Worker ${WORKER_NAME}. The D1 database stays rampboard."
 
 export CI=true
 umask 077
@@ -98,7 +112,7 @@ if [[ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
       process.exit(2);
     }
     if (accounts.length > 1) {
-      console.error("This token can see more than one account. Set CLOUDFLARE_ACCOUNT_ID to the one that should own Rampboard:");
+      console.error("This token can see more than one account. Set CLOUDFLARE_ACCOUNT_ID to the one that should own Firehound Rental:");
       for (const account of accounts) console.error(`  ${account.id}  ${account.name}`);
       process.exit(2);
     }
@@ -200,7 +214,7 @@ ensure_subdomain() {
   fi
   local suffix name
   suffix="$(printf '%s' "$CLOUDFLARE_ACCOUNT_ID" | tr -cd 'a-z0-9' | tail -c 8)"
-  name="rampboard-${suffix}"
+  name="firehound-${suffix}"
   echo "This account has no workers.dev subdomain yet. Registering ${name}."
   api PUT "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/subdomain" "{\"subdomain\":\"${name}\"}"
   existing="$(printf '%s' "$API_BODY" | node --input-type=module -e '
@@ -212,7 +226,7 @@ ensure_subdomain() {
     } catch { /* still missing */ }
   ')" || true
   if [[ -z "$existing" ]]; then
-    echo "Rampboard could not register a workers.dev subdomain." >&2
+    echo "Firehound Rental could not register a workers.dev subdomain." >&2
     api_error >&2 || true
     echo "Open this page, choose a subdomain, then run this script again:" >&2
     echo "  https://dash.cloudflare.com/${CLOUDFLARE_ACCOUNT_ID}/workers/onboarding" >&2
@@ -227,7 +241,7 @@ ensure_subdomain
 
 secret_is_set=0
 secret_list="$(mktemp)"
-if npx wrangler secret list --format json >"$secret_list" 2>/dev/null; then
+if npx wrangler secret list --name "$WORKER_NAME" --format json >"$secret_list" 2>/dev/null; then
   if node --input-type=module -e '
     import { readFileSync } from "node:fs";
     const raw = readFileSync(process.argv[1], "utf8");
@@ -244,7 +258,7 @@ rm -f "$secret_list"
 put_secret() {
   local out
   out="$(mktemp)"
-  if printf '%s\n' "$1" | npx wrangler secret put SESSION_SECRET >"$out" 2>&1; then
+  if printf '%s\n' "$1" | npx wrangler secret put SESSION_SECRET --name "$WORKER_NAME" >"$out" 2>&1; then
     REDACT_SECRET="$1" scrub <"$out"
     rm -f "$out"
     return 0
@@ -261,30 +275,31 @@ else
   echo "Saving a new sign-in secret in Cloudflare. The value is not printed."
   if ! put_secret "$secret"; then
     echo "The sign-in secret could not be saved before the first publish. Publishing, then saving it."
-    npx wrangler deploy | scrub
+    npx wrangler deploy --name "$WORKER_NAME" | scrub
     put_secret "$secret"
   fi
   unset secret
   unset REDACT_SECRET || true
 fi
 
-echo "Publishing Rampboard."
+echo "Publishing Firehound Rental."
 deploy_log="$(mktemp)"
-npx wrangler deploy | tee "$deploy_log" | scrub
-live_url="$(node --input-type=module -e '
+npx wrangler deploy --name "$WORKER_NAME" | tee "$deploy_log" | scrub
+live_url="$(WORKER_NAME="$WORKER_NAME" node --input-type=module -e '
   import { readFileSync } from "node:fs";
   const text = readFileSync(process.argv[1], "utf8");
+  const worker = process.env.WORKER_NAME;
   const matches = text.match(/https:\/\/[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev/g) || [];
-  const preferred = matches.find((url) => url.includes("://rampboard.")) || matches.at(-1) || "";
+  const preferred = matches.find((url) => url.includes(`://${worker}.`)) || matches.at(-1) || "";
   process.stdout.write(preferred);
 ' "$deploy_log")"
 rm -f "$deploy_log"
 
 if [[ -z "$live_url" && -n "${WORKERS_SUBDOMAIN:-}" ]]; then
-  live_url="https://rampboard.${WORKERS_SUBDOMAIN}.workers.dev"
+  live_url="https://${WORKER_NAME}.${WORKERS_SUBDOMAIN}.workers.dev"
 fi
 
 echo ""
-echo "Rampboard is live: ${live_url}"
+echo "Firehound Rental is live: ${live_url}"
 echo "Open that address and create your admin account. Juan Valdivia is already listed, with no email and no sign-in, at \$75 an hour. N1561Y is the airplane, at \$155 an hour wet, with no dry rate."
 echo "Add Juan's email and a password later under People."

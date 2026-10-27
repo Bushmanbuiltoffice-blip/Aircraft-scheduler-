@@ -1,12 +1,12 @@
-# Rampboard
+# Firehound Rental
 
-Rampboard is the scheduling desk for the rental airplane and instructor at Hobby Field (77S) in Creswell, Oregon. It keeps the airplane, instructor time, and pilot reservations in one place, and it runs entirely on Cloudflare.
+Firehound Rental is the scheduling desk for the rental airplane and instructor at Hobby Field (77S) in Creswell, Oregon. It keeps the airplane, instructor time, and pilot reservations in one place, and it runs entirely on Cloudflare.
 
-The live site is [https://rampboard.bushmanbuiltoffice.workers.dev](https://rampboard.bushmanbuiltoffice.workers.dev).
+The next deploy publishes at [https://firehound-rental.bushmanbuiltoffice.workers.dev](https://firehound-rental.bushmanbuiltoffice.workers.dev).
 
 Times on the board are Pacific time (`America/Los_Angeles`).
 
-The name on the screen is **Bushman Aviation**. That was a placeholder. Every page, calendar feed, and notification reads one setting, `ORG_NAME`, in `src/types.ts`. Change that one string to the name you want, save the file, then start the site again or deploy. You do not need to change it anywhere else.
+The name on the screen is **Firehound Rental**. Every page, calendar feed, and notification reads one setting, `ORG_NAME`, in `src/types.ts`. Change that one string to rename the operation, save the file, then start the site again or deploy. You do not need to change it anywhere else.
 
 You do not need to be a programmer to run this. The steps below are copy-and-paste.
 
@@ -18,7 +18,7 @@ You do not need to be a programmer to run this. The steps below are copy-and-pas
 - Keep a pilot record: certificate, medical expiration, and which airplanes they are checked out in. An expired or missing medical blocks a booking. A pilot who is not checked out in that airplane is also blocked. Instructors can still book a checkout ride. An admin can override the medical and checkout rules with a checkbox. Nobody can override a maintenance block, a grounded airplane, or a double booking.
 - See the day or the week, with airplanes or instructors down the side, and reservations on the board.
 - Book, change, or cancel a reservation. The same airplane and the same person cannot be on two flights at once.
-- Check a flight out, then check it back in with Hobbs and tach. Rampboard stores the flight time and the cost (airplane rate, plus the instructor rate when an instructor is on the flight).
+- Check a flight out, then check it back in with Hobbs and tach. Firehound Rental stores the flight time and the cost (airplane rate, plus the instructor rate when an instructor is on the flight).
 - See today’s board, what is coming up, airplane status, and a flight-log and billing list for each pilot.
 - Subscribe to a private calendar feed from the Account page. Mail is saved in an outbox on the dashboard so a real email service can be plugged in later. Nothing is sent to the internet yet.
 
@@ -80,7 +80,7 @@ Stop the app with Ctrl+C in the same terminal.
 
 ## Put it on Cloudflare
 
-The live site is [https://rampboard.bushmanbuiltoffice.workers.dev](https://rampboard.bushmanbuiltoffice.workers.dev). The production D1 database id is already in `wrangler.jsonc`. The free plan is enough. `wrangler.jsonc` does not ask for a CPU limit the free plan would reject.
+The next deploy publishes at [https://firehound-rental.bushmanbuiltoffice.workers.dev](https://firehound-rental.bushmanbuiltoffice.workers.dev). The Worker name in `wrangler.jsonc` is `firehound-rental`. The D1 database stays `rampboard`, and its id is already in `wrangler.jsonc`, so existing airplanes and accounts stay. The free plan is enough. `wrangler.jsonc` does not ask for a CPU limit the free plan would reject.
 
 The token needs permission to edit Workers scripts, edit D1, and read the account. Create it under My Profile → API Tokens. Do not commit the token, and do not paste it into the chat.
 

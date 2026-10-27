@@ -23,7 +23,7 @@ export class OutboxEmailSender implements EmailSender {
       .prepare("INSERT INTO email_outbox (id, to_email, subject, body, created_at) VALUES (?, ?, ?, ?, ?)")
       .bind(crypto.randomUUID(), message.to, message.subject, message.text, new Date().toISOString())
       .run();
-    console.log(`[rampboard email] to=${message.to} subject=${message.subject}`);
+    console.log(`[firehound-rental email] to=${message.to} subject=${message.subject}`);
   }
 }
 
@@ -66,7 +66,7 @@ export function reservationMessage(input: {
     `Pilot: ${who}`,
   ];
   if (input.total) lines.push(`Total billed from Hobbs: ${input.total}`);
-  lines.push("", "This note was recorded by Rampboard. No email provider is connected yet.");
+  lines.push("", `This note was recorded by ${ORG_NAME}. No email provider is connected yet.`);
   return {
     to: "",
     subject: `${input.tail} reservation ${verb}`,

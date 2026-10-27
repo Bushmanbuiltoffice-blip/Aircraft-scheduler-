@@ -6,13 +6,13 @@ import { readSessionCookie } from "./http";
 import { registerAuth } from "./routes_auth";
 import { registerFleet } from "./routes_fleet";
 import { registerSchedule } from "./routes_schedule";
-import type { AppEnv } from "./types";
+import { ORG_NAME, type AppEnv } from "./types";
 import { document, SimpleMessage } from "./ui";
 
 export function createApp(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
-  app.get("/health", (c) => c.json({ ok: true, service: "rampboard" }));
+  app.get("/health", (c) => c.json({ ok: true, service: "firehound-rental" }));
 
   app.use("*", async (c, next) => {
     if (c.req.method === "GET" || c.req.method === "HEAD") {
@@ -76,7 +76,7 @@ export function createApp(): Hono<AppEnv> {
   registerSchedule(app);
 
   app.notFound((c) =>
-    c.html(document(<SimpleMessage title="Page not found" message="That page is not on Rampboard." />), 404),
+    c.html(document(<SimpleMessage title="Page not found" message={`That page is not on ${ORG_NAME}.`} />), 404),
   );
 
   app.onError((error, c) => {
