@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "firehound-rental",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-22",
+  // The Workers free plan rejects a limits.cpu_ms setting. Leave it unset.
+  "assets": {
+    "directory": "./public"
+  },
+  "rules": [
+    {
+      "type": "Text",
+      "globs": ["**/*.sql"]
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "rampboard",
+      // Production D1 database rampboard.
+      "database_id": "42ed7f5a-9174-427d-98fa-f7e3b111eb9a",
+      "migrations_dir": "migrations"
+    }
+  ]
+}
