@@ -17,6 +17,8 @@ export const NOTICES: Record<string, string> = {
   "ical-reset": "Calendar link replaced. Old subscriptions will stop working.",
   "password-set": "Your password is saved. You are signed in.",
   "person-removed": "Person removed. Their flight logs were not deleted or changed.",
+  "resource-added": "PDF added to Resources.",
+  "resource-deleted": "Document removed from Resources.",
 };
 
 export const STUDENT_SOLO_WARNING = "Students usually fly with an instructor. You can still book this solo.";

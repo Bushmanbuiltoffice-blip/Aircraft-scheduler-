@@ -502,3 +502,25 @@ dd { margin: 0.1rem 0 0; }
 @media (hover: none) {
   .month-add span, .cell-add span { opacity: 0.35; width: 1.15rem; height: 1.15rem; font-size: 0.8rem; }
 }
+
+/* Resources tab */
+.resource-group { margin-bottom: 1rem; padding: 0.4rem 1.1rem 0.6rem; }
+.resource-group h2, .resource-upload h2 { font-size: 1.05rem; margin: 0.6rem 0 0.2rem; }
+.resource-list { list-style: none; margin: 0; padding: 0; }
+.resource-item { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.8rem 0; border-top: 1px solid #ece3d3; }
+.resource-item:first-child { border-top: 0; }
+.resource-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.resource-text strong { font-size: 1rem; }
+.resource-note { margin: 0.2rem 0 0; color: var(--muted); font-size: 0.9rem; max-width: 46rem; }
+.resource-actions { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end; }
+.resource-delete { position: relative; }
+.resource-delete summary { list-style: none; cursor: pointer; }
+.resource-delete summary::-webkit-details-marker { display: none; }
+.resource-delete[open] form { display: block; margin-top: 0.4rem; }
+.resource-upload .field-wide { grid-column: 1 / -1; }
+@media (max-width: 640px) {
+  .resource-item { flex-direction: column; align-items: stretch; }
+  .resource-actions { justify-content: flex-start; }
+  .resource-actions .btn { flex: 1 1 auto; text-align: center; }
+  .resource-upload .fields { grid-template-columns: 1fr; }
+}

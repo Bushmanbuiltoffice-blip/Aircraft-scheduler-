@@ -24,6 +24,8 @@ export type MedicalClass = "first" | "second" | "third" | "basicmed" | "none";
 
 export type Bindings = {
   DB: D1Database;
+  /** Static assets. Files under /docs are private and only reached through /resources. */
+  ASSETS?: Fetcher;
   SESSION_SECRET?: string;
 };
 

@@ -22,6 +22,7 @@ const NAV = [
   { href: "/aircraft", label: "Aircraft" },
   { href: "/pilots", label: "People" },
   { href: "/logs", label: "Flight logs" },
+  { href: "/resources", label: "Resources" },
   { href: "/account", label: "Account" },
 ];
 
