@@ -4,6 +4,9 @@ import { formatDateTime, formatTime } from "./time";
 import type { Aircraft, Checkout, FlightLogView, MaintenanceBlock, PilotBilling, ScheduleEntry } from "./types";
 import { Layout, PageHead, RolePill, type Viewer } from "./ui";
 
+/** The dashboard shows only the most recent flights; /logs has the full list. */
+export const DASHBOARD_LOG_LIMIT = 3;
+
 export function DashboardPage(props: {
   viewer: Viewer;
   path: string;
@@ -17,7 +20,6 @@ export function DashboardPage(props: {
   logs: FlightLogView[];
   billing: PilotBilling[];
   month: { hours: number; cents: number; flights: number; label: string };
-  outbox: Array<{ subject: string; toEmail: string; createdAt: string }>;
   medicalBanner: string | null;
   checkouts: Array<Checkout & { tail: string }>;
 }) {
@@ -28,6 +30,36 @@ export function DashboardPage(props: {
     <Layout title="Dashboard" user={props.viewer} path={props.path} notice={props.notice} usingDevSecret={props.usingDevSecret}>
       <PageHead title={props.viewer.role === "admin" ? "Dispatch" : "Your day"} lede={props.todayLabel} />
       {props.medicalBanner ? <p class="alert" role="alert">{props.medicalBanner}</p> : null}
+      {/* Kyle's order: Coming up, then Aircraft, then everything else. Same order on phones. */}
+      <section class="card card-pad" id="dash-coming-up">
+        <header class="section-head">
+          <h2>Coming up</h2>
+          <a href="/reservations/new">New reservation</a>
+        </header>
+        {props.upcoming.length === 0 ? <p class="muted">No upcoming reservations.</p> : <ReservationList items={props.upcoming} />}
+      </section>
+      <section class="card card-pad" id="dash-aircraft">
+        <header class="section-head">
+          <h2>Aircraft</h2>
+          {props.viewer.role === "admin" ? <a href="/aircraft/new">Add aircraft</a> : <a href="/aircraft">Fleet</a>}
+        </header>
+        <ul class="fleet-list">
+          {props.aircraft.map((item) => {
+            const down = props.maintenance.find((block) => block.aircraftId === item.id);
+            return (
+              <li>
+                <a href={`/aircraft/${item.id}`}>
+                  <span class="tail">{item.tailNumber}</span>
+                  <span>{item.make} {item.model}</span>
+                </a>
+                <span class={`pill ${item.status}`}>{statusLabel(item.status)}</span>
+                {down ? <small class="muted">Down: {down.reason}</small> : <small class="muted">Hobbs {formatMeter(item.hobbs)}</small>}
+              </li>
+            );
+          })}
+          {props.aircraft.length === 0 ? <li class="muted">No aircraft yet.</li> : null}
+        </ul>
+      </section>
       <section class="stats">
         <article class="stat">
           <strong>{props.today.length}</strong>
@@ -46,43 +78,12 @@ export function DashboardPage(props: {
           <span>Hobbs hours in {props.month.label}</span>
         </article>
       </section>
-      <div class="cols">
-        <section class="card card-pad">
-          <header class="section-head">
-            <h2>Today</h2>
-            <a href="/schedule">Open the board</a>
-          </header>
-          {props.today.length === 0 ? <p class="muted">Nothing on the board today.</p> : <ReservationList items={props.today} />}
-        </section>
-        <section class="card card-pad">
-          <header class="section-head">
-            <h2>Aircraft</h2>
-            {props.viewer.role === "admin" ? <a href="/aircraft/new">Add aircraft</a> : <a href="/aircraft">Fleet</a>}
-          </header>
-          <ul class="fleet-list">
-            {props.aircraft.map((item) => {
-              const down = props.maintenance.find((block) => block.aircraftId === item.id);
-              return (
-                <li>
-                  <a href={`/aircraft/${item.id}`}>
-                    <span class="tail">{item.tailNumber}</span>
-                    <span>{item.make} {item.model}</span>
-                  </a>
-                  <span class={`pill ${item.status}`}>{statusLabel(item.status)}</span>
-                  {down ? <small class="muted">Down: {down.reason}</small> : <small class="muted">Hobbs {formatMeter(item.hobbs)}</small>}
-                </li>
-              );
-            })}
-            {props.aircraft.length === 0 ? <li class="muted">No aircraft yet.</li> : null}
-          </ul>
-        </section>
-      </div>
-      <section class="card card-pad">
+      <section class="card card-pad" id="dash-today">
         <header class="section-head">
-          <h2>Coming up</h2>
-          <a href="/reservations/new">New reservation</a>
+          <h2>Today</h2>
+          <a href="/schedule">Open the board</a>
         </header>
-        {props.upcoming.length === 0 ? <p class="muted">No upcoming reservations.</p> : <ReservationList items={props.upcoming} />}
+        {props.today.length === 0 ? <p class="muted">Nothing on the board today.</p> : <ReservationList items={props.today} />}
       </section>
       {props.viewer.role !== "admin" ? (
         <section class="card card-pad">
@@ -101,12 +102,12 @@ export function DashboardPage(props: {
           )}
         </section>
       ) : null}
-      <section class="card">
+      <section class="card" id="dash-flight-log">
         <header class="section-head pad">
-          <h2>Flight log</h2>
-          <a href="/logs">All logs</a>
+          <h2>Last {DASHBOARD_LOG_LIMIT} flights</h2>
+          <a href="/logs">View all flight logs</a>
         </header>
-        <LogTable logs={props.logs} />
+        <LogTable logs={props.logs.slice(0, DASHBOARD_LOG_LIMIT)} />
       </section>
       {props.viewer.role === "admin" ? (
         <section class="card">
@@ -139,24 +140,6 @@ export function DashboardPage(props: {
               </tbody>
             </table>
           </div>
-        </section>
-      ) : null}
-      {props.viewer.role === "admin" ? (
-        <section class="card card-pad">
-          <header class="section-head">
-            <h2>Notifications</h2>
-            <span class="muted">Saved here. Not emailed.</span>
-          </header>
-          {props.outbox.length === 0 ? <p class="muted">No notifications yet.</p> : (
-            <ul class="plain">
-              {props.outbox.map((item) => (
-                <li>
-                  <strong>{item.subject}</strong>
-                  <span class="muted"> to {item.toEmail} · {formatDateTime(item.createdAt)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
         </section>
       ) : null}
     </Layout>

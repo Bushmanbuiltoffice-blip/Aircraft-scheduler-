@@ -25,7 +25,6 @@ import {
   listFlightLogs,
   listInstructors,
   listMaintenance,
-  listOutbox,
   listReservationsForUser,
   listReservationsOverlapping,
   listUpcoming,
@@ -34,7 +33,7 @@ import {
   updateReservationIfFree,
 } from "./db";
 import { field, isUuid, readForm, viewerOf } from "./http";
-import { DashboardPage } from "./pages_dash";
+import { DASHBOARD_LOG_LIMIT, DashboardPage } from "./pages_dash";
 import { LogDetailPage, LogsPage } from "./pages_logs";
 import { ReservationPage } from "./pages_reservation";
 import { ReservationFormPage, SchedulePage, type ReservationFormValues } from "./pages_schedule";
@@ -64,7 +63,7 @@ export function registerSchedule(app: Hono<AppEnv>): void {
     const day = dayBounds(today);
     const month = monthRange(today, TIME_ZONE);
     const monthLabel = new Intl.DateTimeFormat("en-US", { timeZone: TIME_ZONE, month: "long" }).format(now);
-    const [aircraft, maintenance, todayAll, upcomingAll, logs, billing, totals, outbox, checkouts] = await Promise.all([
+    const [aircraft, maintenance, todayAll, upcomingAll, logs, billing, totals, checkouts] = await Promise.all([
       listAircraft(c.env.DB),
       listMaintenance(c.env.DB, day.startIso, day.endIso),
       listReservationsOverlapping(c.env.DB, day.startIso, day.endIso),
@@ -73,11 +72,14 @@ export function registerSchedule(app: Hono<AppEnv>): void {
         : listReservationsForUser(c.env.DB, user.id, day.endIso),
       listFlightLogs(
         c.env.DB,
-        user.role === "admin" ? { limit: 8 } : user.role === "instructor" ? { instructorOrPilotId: user.id, limit: 8 } : { pilotId: user.id, limit: 8 },
+        user.role === "admin"
+          ? { limit: DASHBOARD_LOG_LIMIT }
+          : user.role === "instructor"
+            ? { instructorOrPilotId: user.id, limit: DASHBOARD_LOG_LIMIT }
+            : { pilotId: user.id, limit: DASHBOARD_LOG_LIMIT },
       ),
       user.role === "admin" ? billingByPilot(c.env.DB) : Promise.resolve([]),
       monthTotals(c.env.DB, month.startIso, month.endIso),
-      user.role === "admin" ? listOutbox(c.env.DB, 5) : Promise.resolve([]),
       listCheckoutsForUser(c.env.DB, user.id),
     ]);
     const todayItems = user.role === "admin" ? todayAll : todayAll.filter((item) => item.pilotId === user.id || item.instructorId === user.id);
@@ -98,7 +100,6 @@ export function registerSchedule(app: Hono<AppEnv>): void {
           logs={logs}
           billing={billing}
           month={{ ...totals, label: monthLabel }}
-          outbox={outbox}
           medicalBanner={medicalBanner}
           checkouts={checkouts.map((checkout) => ({ ...checkout, tail: tails.get(checkout.aircraftId) ?? "Aircraft" }))}
         />,

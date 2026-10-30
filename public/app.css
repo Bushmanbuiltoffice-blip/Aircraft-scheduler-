@@ -458,3 +458,8 @@ dd { margin: 0.1rem 0 0; }
 .btn.small { padding: 0.3rem 0.7rem; font-size: 0.85rem; }
 .invite-card { display: grid; gap: 0.9rem; max-width: 46rem; padding: 1.25rem; }
 .invite-card input[readonly] { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.85rem; width: 100%; }
+
+/* Dispatch on phones: keep the four counters compact (2 x 2) under Coming up and Aircraft. */
+@media (max-width: 760px) {
+  .stats { grid-template-columns: repeat(2, 1fr); }
+}
