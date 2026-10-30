@@ -15,10 +15,12 @@ export function SchedulePage(props: {
   board: "aircraft" | "instructors";
   anchor: string;
   today: string;
+  /** Current Pacific hour when the day view shows today, else null. */
+  nowHour?: number | null;
   lanes: DayLane[];
   nowPct: number | null;
   weekDays: string[];
-  weekRows: Array<{ title: string; subtitle: string; tone: string; href: string; cells: WeekCellItem[][] }>;
+  weekRows: Array<{ title: string; subtitle: string; tone: string; href: string; bookHref?: string; grounded?: boolean; cells: WeekCellItem[][] }>;
   monthWeeks: MonthDay[][];
 }) {
   const prev = props.view === "month" ? shiftMonth(props.anchor, -1) : addDays(props.anchor, props.view === "week" ? -7 : -1);
@@ -89,6 +91,20 @@ export function SchedulePage(props: {
             <div class="lane-row">
               {props.lanes.map((lane) => (
                 <div class={`lane${lane.grounded ? " grounded" : ""}`}>
+                  {lane.grounded || props.anchor < props.today
+                    ? null
+                    : hours.slice(0, -1).map((hour) =>
+                        props.anchor === props.today && props.nowHour != null && hour <= props.nowHour ? null : (
+                          <a
+                            class="slot-add"
+                            href={`${lane.bookHref}&start=${String(hour).padStart(2, "0")}:00`}
+                            style={`top:${((hour - DAY_START_HOUR) / (DAY_END_HOUR - DAY_START_HOUR)) * 100}%;height:${100 / (DAY_END_HOUR - DAY_START_HOUR)}%`}
+                            aria-label={`New reservation: ${lane.title}, ${formatHour(hour)}`}
+                          >
+                            <span aria-hidden="true">+ {formatHour(hour)}</span>
+                          </a>
+                        ),
+                      )}
                   {props.nowPct != null ? <i class="now-line" style={`top:${props.nowPct}%`}></i> : null}
                   {lane.blocks.map((block) => (
                     <a
@@ -141,8 +157,17 @@ export function SchedulePage(props: {
                     <small>{row.subtitle}</small>
                   </a>
                 </div>
-                {row.cells.map((cell) => (
+                {row.cells.map((cell, index) => (
                   <div class="week-cell">
+                    {row.grounded || !row.bookHref || (props.weekDays[index] ?? "") < props.today ? null : (
+                      <a
+                        class="cell-add"
+                        href={withDate(row.bookHref, props.weekDays[index] ?? props.anchor)}
+                        aria-label={`New reservation: ${row.title}, ${formatLongDay(props.weekDays[index] ?? props.anchor)}`}
+                      >
+                        <span aria-hidden="true">+</span>
+                      </a>
+                    )}
                     {cell.map((item) => (
                       <a class={`chip ${item.className}`} href={item.href} aria-label={item.aria}>
                         <strong>{item.time}</strong>
@@ -176,7 +201,12 @@ function MonthGrid(props: { weeks: MonthDay[][]; today: string; board: string })
           <div class="month-dow" aria-hidden="true">{label}</div>
         ))}
         {props.weeks.flat().map((cell) => (
-          <div class={`month-cell${cell.inMonth ? "" : " outside"}${cell.day === props.today ? " today" : ""}`}>
+          <div class={`month-cell${cell.inMonth ? "" : " outside"}${cell.day === props.today ? " today" : ""}${cell.day < props.today ? " past" : " bookable"}`}>
+            {cell.day < props.today ? null : (
+              <a class="month-add" href={newReservationHref(cell.day)} aria-label={`New reservation on ${formatLongDay(cell.day)}`}>
+                <span aria-hidden="true">+</span>
+              </a>
+            )}
             <a class="month-num" href={scheduleHref("day", props.board, cell.day)} aria-label={`Open ${formatLongDay(cell.day)}`}>
               {Number(cell.day.slice(8))}
             </a>
@@ -216,6 +246,15 @@ function MonthList(props: { items: MonthDay["items"] }) {
       ))}
     </ul>
   );
+}
+
+/** New reservation for a day; the form picks the default airplane and time. */
+export function newReservationHref(day: string, start?: string): string {
+  return `/reservations/new?date=${day}${start ? `&start=${start}` : ""}`;
+}
+
+function withDate(href: string, day: string): string {
+  return href.replace(/([?&])date=\d{4}-\d{2}-\d{2}/, `$1date=${day}`);
 }
 
 function scheduleHref(view: string, board: string, date: string): string {

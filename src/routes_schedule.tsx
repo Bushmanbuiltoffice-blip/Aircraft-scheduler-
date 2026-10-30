@@ -40,10 +40,12 @@ import { ReservationFormPage, SchedulePage, type ReservationFormValues } from ".
 import { document, SimpleMessage } from "./ui";
 import {
   addDays,
+  defaultBookingWindow,
   formatDateTime,
   formatDayKey,
   formatLongDay,
   formatTime,
+  hourInZone,
   monthGrid,
   monthRange,
   parseDay,
@@ -148,6 +150,7 @@ export function registerSchedule(app: Hono<AppEnv>): void {
           board={board}
           anchor={anchor}
           today={today}
+          nowHour={anchor === today ? hourInZone() : null}
           lanes={dayBoard.lanes}
           nowPct={dayBoard.nowPct}
           weekDays={days}
@@ -160,11 +163,15 @@ export function registerSchedule(app: Hono<AppEnv>): void {
 
   app.get("/reservations/new", async (c) => {
     const user = mustUser(c);
-    const today = todayInZone();
+    const now = new Date();
+    const today = todayInZone(now);
     const date = parseDay(c.req.query("date") ?? "") ?? today;
+    const window = defaultBookingWindow(date, today, now, c.req.query("start"));
     const aircraft = await listAircraft(c.env.DB);
     const requestedAircraft = c.req.query("aircraft") ?? "";
-    const selected = aircraft.find((item) => item.id === requestedAircraft);
+    // Preselect the requested airplane, or the first one in service (N1561Y today).
+    const selected =
+      aircraft.find((item) => item.id === requestedAircraft) ?? aircraft.find((item) => item.status !== "grounded");
     return renderBookingForm(c, {
       mode: "create",
       action: "/reservations",
@@ -173,8 +180,8 @@ export function registerSchedule(app: Hono<AppEnv>): void {
         aircraftId: selected?.id ?? "",
         pilotId: booksOnlySelf(user.role) ? user.id : "",
         instructorId: c.req.query("instructor") ?? "",
-        startsAt: `${date}T09:00`,
-        endsAt: `${date}T11:00`,
+        startsAt: window.startsAt,
+        endsAt: window.endsAt,
         rateBasis: selected?.defaultRate ?? "wet",
         notes: "",
         override: false,

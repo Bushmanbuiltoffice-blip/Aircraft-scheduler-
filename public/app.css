@@ -463,3 +463,42 @@ dd { margin: 0.1rem 0 0; }
 @media (max-width: 760px) {
   .stats { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* Click or tap an empty day or time to book it. Reservations stay on top and open themselves. */
+.month-cell, .week-cell { position: relative; }
+.month-cell > :not(.month-add), .week-cell > :not(.cell-add) { position: relative; z-index: 1; }
+.month-cell > .month-list { pointer-events: none; }
+.month-cell > .month-list .chip { pointer-events: auto; }
+.month-add, .cell-add, .slot-add {
+  position: absolute;
+  z-index: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  text-decoration: none;
+  color: var(--muted);
+  border-radius: 6px;
+  transition: background-color 120ms ease;
+}
+.month-add, .cell-add { inset: 0; padding: 0.25rem 0.4rem; }
+.slot-add { left: 0; right: 0; align-items: center; justify-content: flex-start; padding: 0 0.5rem; }
+.month-add span, .cell-add span, .slot-add span {
+  opacity: 0;
+  font-weight: 650;
+  font-size: 0.8rem;
+  transition: opacity 120ms ease;
+}
+.month-add span, .cell-add span {
+  width: 1.5rem; height: 1.5rem; border-radius: 99px; display: grid; place-items: center;
+  background: #12263a; color: white; font-size: 1rem; line-height: 1;
+}
+.month-add:hover, .cell-add:hover, .slot-add:hover,
+.month-add:focus-visible, .cell-add:focus-visible, .slot-add:focus-visible { background: rgba(29, 78, 137, 0.07); }
+.month-add:hover span, .cell-add:hover span, .slot-add:hover span,
+.month-add:focus-visible span, .cell-add:focus-visible span, .slot-add:focus-visible span { opacity: 1; }
+.month-cell.bookable { cursor: pointer; }
+.lane .block { z-index: 1; }
+/* Touch screens have no hover: show a faint + so people know a day can be tapped. */
+@media (hover: none) {
+  .month-add span, .cell-add span { opacity: 0.35; width: 1.15rem; height: 1.15rem; font-size: 0.8rem; }
+}

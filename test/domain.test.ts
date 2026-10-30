@@ -149,6 +149,39 @@ describe("eligibility", () => {
   });
 });
 
+describe("default booking window", () => {
+  it("uses 9:00 AM for a future day and lasts two hours", async () => {
+    const { defaultBookingWindow } = await import("../src/time");
+    expect(defaultBookingWindow("2026-11-03", "2026-10-29", new Date("2026-10-29T20:00:00Z"))).toEqual({
+      startsAt: "2026-11-03T09:00",
+      endsAt: "2026-11-03T11:00",
+    });
+  });
+  it("keeps a requested start time on a future day", async () => {
+    const { defaultBookingWindow } = await import("../src/time");
+    expect(defaultBookingWindow("2026-11-03", "2026-10-29", new Date(), "14:00")).toEqual({
+      startsAt: "2026-11-03T14:00",
+      endsAt: "2026-11-03T16:00",
+    });
+  });
+  it("uses the next full hour today, also when the requested slot already passed", async () => {
+    const { defaultBookingWindow } = await import("../src/time");
+    // 20:10 UTC is 1:10 PM Pacific (PDT).
+    const now = new Date("2026-10-29T20:10:00Z");
+    expect(defaultBookingWindow("2026-10-29", "2026-10-29", now).startsAt).toBe("2026-10-29T14:00");
+    expect(defaultBookingWindow("2026-10-29", "2026-10-29", now, "09:00").startsAt).toBe("2026-10-29T14:00");
+    expect(defaultBookingWindow("2026-10-29", "2026-10-29", now, "17:00").startsAt).toBe("2026-10-29T17:00");
+  });
+  it("rolls past midnight late in the evening", async () => {
+    const { defaultBookingWindow } = await import("../src/time");
+    // 06:30 UTC on Oct 30 is 11:30 PM Pacific on Oct 29.
+    expect(defaultBookingWindow("2026-10-29", "2026-10-29", new Date("2026-10-30T06:30:00Z"))).toEqual({
+      startsAt: "2026-10-30T00:00",
+      endsAt: "2026-10-30T02:00",
+    });
+  });
+});
+
 describe("time", () => {
   it("converts a Pacific afternoon to UTC during daylight time", () => {
     const utc = zonedTimeToUtc("2026-10-26T10:00");
