@@ -1,7 +1,7 @@
 /** @jsxImportSource hono/jsx */
 import type { Context, Hono } from "hono";
 import { RESOURCE_TONES, buildDayBoard, buildMonthCalendar, buildWeekBoard, type BoardEvent, type BoardResource, type MonthEntry } from "./board";
-import { booksOnlySelf, canBookDespiteEligibility, computeFlightCost, eligibilityAllowsBooking, pilotEligibility, validateReservationWindow } from "./domain";
+import { booksOnlySelf, canBookDespiteEligibility, computeFlightCost, eligibilityAllowsBooking, medicalWaivedByInstructor, pilotEligibility, validateReservationWindow } from "./domain";
 import { createEmailSender, reservationMessage, safeSend } from "./email";
 import { formatMoney, parseMeter } from "./format";
 import { buildIcal, type IcalEvent } from "./ical";
@@ -373,8 +373,9 @@ function canManage(user: User, entry: { pilotId: string; instructorId: string | 
 }
 
 function medicalBannerFor(user: User, today: string): string | null {
-  if (!user.medicalExpiration) return "Your medical expiration is not on file. Add it under Account before you book.";
-  if (user.medicalExpiration < today) return `Your medical expired on ${user.medicalExpiration}. You cannot book until it is updated.`;
+  const withInstructor = booksOnlySelf(user.role) ? " You can still book a flight with an instructor aboard." : "";
+  if (!user.medicalExpiration) return `Your medical expiration is not on file. Add it under Account before you book solo.${withInstructor}`;
+  if (user.medicalExpiration < today) return `Your medical expired on ${user.medicalExpiration}. You cannot book solo until it is updated.${withInstructor}`;
   return null;
 }
 
@@ -460,22 +461,17 @@ async function renderReservation(c: Context<AppEnv>, id: string, actionError: st
     getCheckout(c.env.DB, entry.pilotId, entry.aircraftId),
     getFlightLogByReservation(c.env.DB, entry.id),
   ]);
-  const warnings =
+  const eligibility =
     entry.status === "scheduled" && pilot && aircraft
       ? pilotEligibility({
           medicalExpiration: pilot.medicalExpiration,
           checkout,
           today: formatDayKey(new Date(entry.startsAt)),
           aircraftTail: aircraft.tailNumber,
-        }).blocks.concat(
-          pilotEligibility({
-            medicalExpiration: pilot.medicalExpiration,
-            checkout,
-            today: formatDayKey(new Date(entry.startsAt)),
-            aircraftTail: aircraft.tailNumber,
-          }).warnings,
-        )
-      : [];
+          instructorAboard: medicalWaivedByInstructor(pilot.role, Boolean(entry.instructorId)),
+        })
+      : null;
+  const warnings = eligibility ? eligibility.blocks.concat(eligibility.warnings) : [];
   if (pilot?.role === "student" && !entry.instructorId && entry.status !== "cancelled") warnings.push(STUDENT_SOLO_WARNING);
   return c.html(
     document(
@@ -566,6 +562,7 @@ async function saveBooking(c: Context<AppEnv>, existingId: string | null): Promi
     checkout,
     today: formatDayKey(startsAt),
     aircraftTail: aircraft.tailNumber,
+    instructorAboard: medicalWaivedByInstructor(pilot.role, Boolean(instructor)),
   });
   const decision = eligibilityAllowsBooking(eligibility, canBookDespiteEligibility(user.role, values.override && user.role === "admin"));
   if (!decision.ok) return fail(decision.blocks, decision.warnings);

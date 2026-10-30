@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { hashPassword, verifyPassword } from "../src/auth";
-import { booksOnlySelf, canBookDespiteEligibility, computeFlightCost, pilotEligibility, validateReservationWindow } from "../src/domain";
+import { MEDICAL_WITH_INSTRUCTOR_NOTE, booksOnlySelf, canBookDespiteEligibility, computeFlightCost, medicalWaivedByInstructor, pilotEligibility, validateReservationWindow } from "../src/domain";
 import { buildIcal, escapeText } from "../src/ical";
 import { buildMonthCalendar } from "../src/board";
 import { addDays, clipToWindow, monthGrid, rangesOverlap, shiftMonth, todayInZone, zonedTimeToUtc } from "../src/time";
@@ -87,6 +87,54 @@ describe("eligibility", () => {
     expect(result.ok).toBe(false);
     expect(result.blocks.join(" ")).toMatch(/Medical expired/);
     expect(result.blocks.join(" ")).toMatch(/Not checked out/);
+  });
+
+  it("turns a missing or expired medical into a note when an instructor is aboard", () => {
+    for (const medicalExpiration of [null, "2026-10-01"]) {
+      const result = pilotEligibility({
+        medicalExpiration,
+        checkout: { status: "current", expiresOn: null },
+        today,
+        aircraftTail: "N1561Y",
+        instructorAboard: true,
+      });
+      expect(result.ok).toBe(true);
+      expect(result.blocks).toEqual([]);
+      expect(result.warnings.join(" ")).toContain(MEDICAL_WITH_INSTRUCTOR_NOTE);
+    }
+  });
+
+  it("still blocks a solo flight without a current medical", () => {
+    const result = pilotEligibility({
+      medicalExpiration: "2026-10-01",
+      checkout: { status: "current", expiresOn: null },
+      today,
+      aircraftTail: "N1561Y",
+      instructorAboard: false,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.blocks.join(" ")).toMatch(/Medical expired/);
+  });
+
+  it("keeps the aircraft checkout rule when an instructor is aboard", () => {
+    const result = pilotEligibility({
+      medicalExpiration: null,
+      checkout: null,
+      today,
+      aircraftTail: "N1561Y",
+      instructorAboard: true,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.blocks).toEqual(["Not checked out in N1561Y."]);
+  });
+
+  it("waives the medical only for students and renters with an instructor", () => {
+    expect(medicalWaivedByInstructor("student", true)).toBe(true);
+    expect(medicalWaivedByInstructor("renter", true)).toBe(true);
+    expect(medicalWaivedByInstructor("student", false)).toBe(false);
+    expect(medicalWaivedByInstructor("renter", false)).toBe(false);
+    expect(medicalWaivedByInstructor("admin", true)).toBe(false);
+    expect(medicalWaivedByInstructor("instructor", true)).toBe(false);
   });
 
   it("warns when a medical is inside 30 days", () => {

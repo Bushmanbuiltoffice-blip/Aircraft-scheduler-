@@ -90,19 +90,35 @@ export type Eligibility = {
   warnings: string[];
 };
 
+export const MEDICAL_WITH_INSTRUCTOR_NOTE = "No current medical, OK with instructor aboard.";
+
+/**
+ * A student or renter may fly without a current medical when an instructor is
+ * on the booking. Solo flights still need a current medical.
+ */
+export function medicalWaivedByInstructor(pilotRole: Role, hasInstructor: boolean): boolean {
+  return hasInstructor && booksOnlySelf(pilotRole);
+}
+
 export function pilotEligibility(input: {
   medicalExpiration: string | null;
   checkout: { status: string; expiresOn: string | null } | null;
   today: string;
   aircraftTail: string;
+  /** True when the pilot is a student or renter and an instructor is on the booking. */
+  instructorAboard?: boolean;
 }): Eligibility {
   const blocks: string[] = [];
   const warnings: string[] = [];
-  if (!input.medicalExpiration) {
-    blocks.push("No medical expiration is on file.");
-  } else if (input.medicalExpiration < input.today) {
-    blocks.push(`Medical expired on ${input.medicalExpiration}.`);
-  } else {
+  const medicalProblem = !input.medicalExpiration
+    ? "No medical expiration is on file."
+    : input.medicalExpiration < input.today
+      ? `Medical expired on ${input.medicalExpiration}.`
+      : null;
+  if (medicalProblem) {
+    if (input.instructorAboard) warnings.push(`${MEDICAL_WITH_INSTRUCTOR_NOTE} ${medicalProblem}`);
+    else blocks.push(medicalProblem);
+  } else if (input.medicalExpiration) {
     const days = daysBetween(input.today, input.medicalExpiration);
     if (days <= 30) {
       warnings.push(`Medical expires in ${days} day${days === 1 ? "" : "s"} (${input.medicalExpiration}).`);
