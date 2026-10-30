@@ -14,6 +14,8 @@ export function InviteLinkPage(props: {
   smsHref: string;
   mailtoHref: string | null;
   message: string;
+  /** True right after Add person saved this person. */
+  justAdded?: boolean;
 }) {
   const label = props.reset ? "Reset link" : "Invite link";
   return (
@@ -22,8 +24,14 @@ export function InviteLinkPage(props: {
         title={`${label} for ${props.person.name}`}
         lede={`Single use. Expires ${formatDateTime(props.expiresAt)}. Any older unused link for ${props.person.name} no longer works.`}
       >
+        {props.justAdded ? <a class="btn secondary" href={`/pilots/${props.person.id}`}>Open profile</a> : null}
         <a class="btn secondary" href="/pilots">Back to People</a>
       </PageHead>
+      {props.justAdded ? (
+        <p class="alert ok" role="status">
+          {props.person.name} is saved with no password. They can't sign in until they open this link and choose one.
+        </p>
+      ) : null}
       <section class="card invite-card" role="dialog" aria-labelledby="invite-heading">
         <h2 id="invite-heading">Send this link to {props.person.name}</h2>
         <p class="muted">

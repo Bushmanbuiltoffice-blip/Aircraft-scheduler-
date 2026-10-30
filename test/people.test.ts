@@ -363,13 +363,16 @@ describe("students", () => {
         medical_class: "third",
         medical_expiration: addDays(todayInZone(), 400),
         instructor_rate: "",
-        password: "Pattern123!",
       },
       adminCookie,
     );
-    expect(created.status).toBe(303);
+    // Add person now goes straight to the invite dialog instead of asking for a password.
+    expect(created.status).toBe(200);
+    expect(await created.text()).toContain("Invite link for Ada Student");
     const student = await db().prepare("SELECT id, role FROM users WHERE email = 'ada@example.com'").first<{ id: string; role: string }>();
     expect(student?.role).toBe("student");
+    // She has no password until she accepts the invite; give her one here so she can book below.
+    await db().prepare("UPDATE users SET password_hash = ? WHERE id = ?").bind(await hashPassword("Pattern123!"), student!.id).run();
     const people = await get("/pilots", adminCookie);
     const peopleHtml = await people.text();
     expect(peopleHtml).toContain("pill role-student");

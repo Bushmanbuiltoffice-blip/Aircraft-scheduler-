@@ -6,11 +6,40 @@ import { field, readForm, setSessionCookie, viewerOf } from "./http";
 import { createInvite, hasWorkingLogin, inviteMessage, lookupInvite, mailtoHref, redeemInvite, smsHref } from "./invites";
 import { InviteInvalidPage, InviteLinkPage, InvitePage } from "./pages_invite";
 import { document, SimpleMessage } from "./ui";
-import { SESSION_DAYS, type AppEnv } from "./types";
+import { SESSION_DAYS, type AppEnv, type User } from "./types";
 
 function noStore(c: Context<AppEnv>): void {
   c.header("Cache-Control", "no-store");
   c.header("Referrer-Policy", "same-origin");
+}
+
+/** Creates a fresh invite (or reset) link for a person and shows the Copy / Text / Email dialog. */
+export async function inviteLinkResponse(
+  c: Context<AppEnv>,
+  actor: User,
+  person: User,
+  options: { justAdded?: boolean } = {},
+): Promise<Response> {
+  const { token, expiresAt } = await createInvite(c.env.DB, { userId: person.id, createdBy: actor.id });
+  const url = `${new URL(c.req.url).origin}/invite/${token}`;
+  const message = inviteMessage(url);
+  noStore(c);
+  return c.html(
+    document(
+      <InviteLinkPage
+        viewer={viewerOf(actor)}
+        usingDevSecret={c.get("usingDevSecret")}
+        person={person}
+        url={url}
+        expiresAt={expiresAt}
+        reset={hasWorkingLogin(person)}
+        smsHref={smsHref(person.phone, message)}
+        mailtoHref={person.email ? mailtoHref(person.email, message) : null}
+        message={message}
+        justAdded={options.justAdded}
+      />,
+    ),
+  );
 }
 
 export function registerInvites(app: Hono<AppEnv>): void {
@@ -24,25 +53,7 @@ export function registerInvites(app: Hono<AppEnv>): void {
     if (person.deletedAt) {
       return c.html(document(<SimpleMessage title="Person removed" message={`${person.name} was removed and cannot be invited.`} />), 409);
     }
-    const { token, expiresAt } = await createInvite(c.env.DB, { userId: person.id, createdBy: user.id });
-    const url = `${new URL(c.req.url).origin}/invite/${token}`;
-    const message = inviteMessage(url);
-    noStore(c);
-    return c.html(
-      document(
-        <InviteLinkPage
-          viewer={viewerOf(user)}
-          usingDevSecret={c.get("usingDevSecret")}
-          person={person}
-          url={url}
-          expiresAt={expiresAt}
-          reset={hasWorkingLogin(person)}
-          smsHref={smsHref(person.phone, message)}
-          mailtoHref={person.email ? mailtoHref(person.email, message) : null}
-          message={message}
-        />,
-      ),
-    );
+    return inviteLinkResponse(c, user, person);
   });
 
   app.get("/invite/:token", async (c) => {

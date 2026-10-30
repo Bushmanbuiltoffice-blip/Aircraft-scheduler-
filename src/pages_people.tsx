@@ -179,9 +179,15 @@ export function PersonFormPage(props: {
               <small>Used when this person is the instructor on a flight. Enter 0 if you do not charge.</small>
             </label>
           ) : null}
-          {props.showPassword ? (
+          {props.mode === "create" ? (
+            <p class="wide muted no-password-note">
+              No password needed. After you save, you get a 7-day, single-use invite link to text or email them. They
+              choose their own password when they open it.
+            </p>
+          ) : null}
+          {props.showPassword && props.mode !== "create" ? (
             <label class="wide">
-              {props.mode === "create" ? "Temporary password" : "New password"}
+              New password
               <input type="text" name="password" value={props.values.password} autocomplete="off" />
               <small>{props.passwordHint}</small>
             </label>

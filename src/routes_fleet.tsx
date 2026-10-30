@@ -1,7 +1,8 @@
 /** @jsxImportSource hono/jsx */
 import type { Context, Hono } from "hono";
-import { emailError, hashPassword, newToken, normalizeEmail, passwordError, verifyPassword } from "./auth";
+import { emailError, hashPassword, newToken, normalizeEmail, passwordError, UNUSABLE_PASSWORD_HASH, verifyPassword } from "./auth";
 import { pageNotice } from "./copy";
+import { inviteLinkResponse } from "./routes_invite";
 import { booksOnlySelf } from "./domain";
 import {
   countAdmins,
@@ -235,7 +236,8 @@ export function registerFleet(app: Hono<AppEnv>): void {
       if (!isUniqueError(error)) throw error;
       return personResponse(c, "create", parsed.values, ["That email is already in use."], null);
     }
-    return c.redirect(`/pilots/${parsed.draft.id}?notice=pilot-saved`, 303);
+    // Show the invite right away so the admin can send it.
+    return inviteLinkResponse(c, user, { ...parsed.draft, deletedAt: null } as User, { justAdded: true });
   });
 
 
@@ -442,8 +444,8 @@ async function personResponse(
         values={values}
         errors={errors}
         canEditRole={user.role === "admin" && mode !== "self"}
-        showPassword={user.role === "admin" && mode !== "self"}
-        passwordHint={mode === "create" ? "Share this once. At least 10 characters, with a letter and a number." : "Leave blank to keep the current password."}
+        showPassword={user.role === "admin" && mode === "edit"}
+        passwordHint="Leave blank to keep the current password."
         aircraft={aircraft}
         checkouts={checkouts}
         checkoutAction={person ? `/pilots/${person.id}/checkouts` : undefined}
@@ -654,16 +656,14 @@ async function parsePerson(
       if (instructorRateCents == null) errors.push("Instructor rate should look like 75.00.");
     }
   }
-  let passwordHash = input.current?.passwordHash ?? "";
-  if (input.mode === "create") {
-    const problem = passwordError(values.password);
-    if (problem) errors.push(problem);
-  } else if (input.mode === "edit" && values.password) {
+  // New people start with no usable password. They pick one from their invite link.
+  let passwordHash = input.mode === "create" ? UNUSABLE_PASSWORD_HASH : (input.current?.passwordHash ?? UNUSABLE_PASSWORD_HASH);
+  if (input.mode === "edit" && values.password) {
     const problem = passwordError(values.password);
     if (problem) errors.push(problem);
   }
   if (errors.length) return { values, errors, draft: null };
-  if (input.mode === "create" || (input.mode === "edit" && values.password)) passwordHash = await hashPassword(values.password);
+  if (input.mode === "edit" && values.password) passwordHash = await hashPassword(values.password);
   return {
     values,
     errors,
