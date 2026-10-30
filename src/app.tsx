@@ -5,6 +5,7 @@ import { countAdmins, userForSession } from "./db";
 import { readSessionCookie } from "./http";
 import { registerAuth } from "./routes_auth";
 import { registerFleet } from "./routes_fleet";
+import { registerInvites } from "./routes_invite";
 import { registerSchedule } from "./routes_schedule";
 import { ORG_NAME, type AppEnv } from "./types";
 import { document, SimpleMessage } from "./ui";
@@ -72,6 +73,7 @@ export function createApp(): Hono<AppEnv> {
   });
 
   registerAuth(app);
+  registerInvites(app);
   registerFleet(app);
   registerSchedule(app);
 
@@ -91,5 +93,5 @@ export function createApp(): Hono<AppEnv> {
 }
 
 function isPublic(path: string): boolean {
-  return path === "/login" || path === "/setup" || path === "/health" || path.startsWith("/ical/");
+  return path === "/login" || path === "/setup" || path === "/health" || path.startsWith("/ical/") || path.startsWith("/invite/");
 }

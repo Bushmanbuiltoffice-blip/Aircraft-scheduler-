@@ -29,6 +29,7 @@ import {
   upsertCheckout,
 } from "./db";
 import { blankToNull, checked, field, isUuid, readForm, viewerOf } from "./http";
+import { hasWorkingLogin, pendingInvites } from "./invites";
 import { parseDollarsToCents, parseMeter } from "./format";
 import { AccountPassword, DeletePersonPage, PeoplePage, PersonFormPage, personToForm, RemovedPersonPage, type PersonFormValues } from "./pages_people";
 import { AircraftFormPage, AircraftListPage, aircraftToForm, type AircraftFormValues } from "./pages_fleet";
@@ -190,6 +191,7 @@ export function registerFleet(app: Hono<AppEnv>): void {
     if (booksOnlySelf(user.role)) return c.redirect("/account");
     const today = todayInZone();
     const people = await listUsers(c.env.DB);
+    const invites = user.role === "admin" ? await pendingInvites(c.env.DB) : new Map<string, string>();
     const checkoutCounts = new Map<string, number>();
     await Promise.all(
       people.map(async (person) => {
@@ -208,6 +210,8 @@ export function registerFleet(app: Hono<AppEnv>): void {
             ...person,
             medicalState: medicalState(person.medicalExpiration, today),
             checkoutCount: checkoutCounts.get(person.id) ?? 0,
+            hasLogin: hasWorkingLogin(person),
+            inviteExpiresAt: invites.get(person.id) ?? null,
           }))}
         />,
       ),

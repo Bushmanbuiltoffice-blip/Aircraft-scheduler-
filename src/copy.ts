@@ -15,6 +15,7 @@ export const NOTICES: Record<string, string> = {
   "account-saved": "Your account is updated.",
   "password-saved": "Password updated.",
   "ical-reset": "Calendar link replaced. Old subscriptions will stop working.",
+  "password-set": "Your password is saved. You are signed in.",
   "person-removed": "Person removed. Their flight logs were not deleted or changed.",
 };
 

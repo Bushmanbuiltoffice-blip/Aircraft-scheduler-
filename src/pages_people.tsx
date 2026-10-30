@@ -26,8 +26,9 @@ export function PeoplePage(props: {
   path: string;
   notice?: string | null;
   usingDevSecret: boolean;
-  people: Array<User & { medicalState: string; checkoutCount: number }>;
+  people: Array<User & { medicalState: string; checkoutCount: number; hasLogin?: boolean; inviteExpiresAt?: string | null }>;
 }) {
+  const admin = props.viewer.role === "admin";
   return (
     <Layout title="People" user={props.viewer} path={props.path} notice={props.notice} usingDevSecret={props.usingDevSecret}>
       <PageHead title="People" lede="Pilots, students, instructors, and admins. Medical dates and aircraft checkouts live here.">
@@ -42,7 +43,8 @@ export function PeoplePage(props: {
               <th>Certificate</th>
               <th>Medical</th>
               <th>Checkouts</th>
-              {props.viewer.role === "admin" ? <th></th> : null}
+              {admin ? <th>Login</th> : null}
+              {admin ? <th></th> : null}
             </tr>
           </thead>
           <tbody>
@@ -57,8 +59,30 @@ export function PeoplePage(props: {
                   </span>
                 </td>
                 <td>{person.checkoutCount}</td>
-                {props.viewer.role === "admin" ? (
-                  <td>{person.id === props.viewer.id ? null : <a href={`/pilots/${person.id}/delete`}>Delete</a>}</td>
+                {admin ? (
+                  <td>
+                    {person.inviteExpiresAt ? (
+                      <span class="pill out">Invited, expires {formatDate(person.inviteExpiresAt)}</span>
+                    ) : person.hasLogin ? (
+                      <span class="pill available">Active login</span>
+                    ) : (
+                      <span class="pill">No login</span>
+                    )}
+                  </td>
+                ) : null}
+                {admin ? (
+                  <td>
+                    {person.id === props.viewer.id ? null : (
+                      <div class="row-actions">
+                      <form method="post" action={`/pilots/${person.id}/invite`} class="inline-form">
+                        <button class={person.hasLogin ? "text-btn" : "btn small"} type="submit">
+                          {person.hasLogin ? "Send reset link" : "Invite"}
+                        </button>
+                      </form>
+                      <a href={`/pilots/${person.id}/delete`}>Delete</a>
+                      </div>
+                    )}
+                  </td>
                 ) : null}
               </tr>
             ))}

@@ -20,6 +20,7 @@ You do not need to be a programmer to run this. The steps below are copy-and-pas
 - Book, change, or cancel a reservation. The same airplane and the same person cannot be on two flights at once.
 - Check a flight out, then check it back in with Hobbs and tach. Firehound Rental stores the flight time and the cost (airplane rate, plus the instructor rate when an instructor is on the flight).
 - See today’s board, what is coming up, airplane status, and a flight-log and billing list for each pilot.
+- Invite people to set their own password. On People, an admin clicks Invite (or Send reset link for someone who already signs in). The page shows a single-use link that expires in 7 days, with Copy, Text, and Email buttons. Nothing is emailed by the server. A new link replaces any older unused one, and using a link signs that person out everywhere else.
 - Subscribe to a private calendar feed from the Account page. Mail is saved in an outbox on the dashboard so a real email service can be plugged in later. Nothing is sent to the internet yet.
 
 ## Run it on your computer

@@ -252,6 +252,7 @@ export async function removePerson(db: D1Database, personId: string, nowIso: str
   await db.batch([
     db.prepare("UPDATE users SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL").bind(nowIso, personId),
     db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(personId),
+    db.prepare("UPDATE invites SET revoked_at = ? WHERE user_id = ? AND used_at IS NULL AND revoked_at IS NULL").bind(nowIso, personId),
     db
       .prepare(
         `UPDATE reservations

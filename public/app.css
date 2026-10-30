@@ -451,3 +451,10 @@ dd { margin: 0.1rem 0 0; }
   .month-num { font-size: 0.8rem; }
   dl { grid-template-columns: 1fr; }
 }
+
+/* Invite links */
+.row-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+.inline-form { display: inline; margin: 0; }
+.btn.small { padding: 0.3rem 0.7rem; font-size: 0.85rem; }
+.invite-card { display: grid; gap: 0.9rem; max-width: 46rem; padding: 1.25rem; }
+.invite-card input[readonly] { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.85rem; width: 100%; }
