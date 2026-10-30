@@ -1,6 +1,8 @@
 /** @jsxImportSource hono/jsx */
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
+import { getCookie } from "hono/cookie";
 import { sessionSecret } from "./auth";
+import { CSRF_COOKIE, CSRF_FIELD, csrfTokenMatches, ensureCsrfCookie, injectCsrfField, originVerdict } from "./csrf";
 import { countAdmins, userForSession } from "./db";
 import { readSessionCookie } from "./http";
 import { registerAuth } from "./routes_auth";
@@ -8,7 +10,7 @@ import { registerFleet } from "./routes_fleet";
 import { registerInvites } from "./routes_invite";
 import { registerSchedule } from "./routes_schedule";
 import { ORG_NAME, type AppEnv } from "./types";
-import { document, SimpleMessage } from "./ui";
+import { document, SimpleMessage, TryAgainPage } from "./ui";
 
 export function createApp(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
@@ -16,22 +18,39 @@ export function createApp(): Hono<AppEnv> {
   app.get("/health", (c) => c.json({ ok: true, service: "firehound-rental" }));
 
   app.use("*", async (c, next) => {
-    if (c.req.method === "GET" || c.req.method === "HEAD") {
+    const method = c.req.method;
+    if (method === "GET" || method === "HEAD") {
+      const token = ensureCsrfCookie(c);
       await next();
+      const type = c.res.headers.get("content-type") ?? "";
+      if (method === "GET" && type.includes("text/html")) {
+        const body = await c.res.text();
+        if (/<form\b/i.test(body)) {
+          const headers = new Headers(c.res.headers);
+          headers.delete("content-length");
+          c.res = new Response(injectCsrfField(body, token), { status: c.res.status, headers });
+        } else {
+          c.res = new Response(body, c.res);
+        }
+      }
       return;
     }
-    const origin = c.req.header("origin");
-    if (!origin) {
-      await next();
-      return;
+    const verdict = originVerdict({
+      origin: c.req.header("origin"),
+      referer: c.req.header("referer"),
+      host: new URL(c.req.url).host,
+    });
+    if (verdict === "cross") return blocked(c);
+    if (verdict === "unknown") {
+      const type = c.req.header("content-type") ?? "";
+      let formToken: string | undefined;
+      if (/application\/x-www-form-urlencoded|multipart\/form-data/i.test(type)) {
+        const body = await c.req.parseBody();
+        const value = body[CSRF_FIELD];
+        formToken = typeof value === "string" ? value : undefined;
+      }
+      if (!csrfTokenMatches(getCookie(c, CSRF_COOKIE), formToken)) return blocked(c);
     }
-    let originHost = "";
-    try {
-      originHost = new URL(origin).host;
-    } catch {
-      return c.text("Cross-site request blocked.", 403);
-    }
-    if (originHost !== new URL(c.req.url).host) return c.text("Cross-site request blocked.", 403);
     await next();
   });
 
@@ -94,4 +113,10 @@ export function createApp(): Hono<AppEnv> {
 
 function isPublic(path: string): boolean {
   return path === "/login" || path === "/setup" || path === "/health" || path.startsWith("/ical/") || path.startsWith("/invite/");
+}
+
+function blocked(c: Context<AppEnv>) {
+  const path = new URL(c.req.url).pathname;
+  const retry = path.startsWith("/") && !path.startsWith("//") ? path : "/login";
+  return c.html(document(<TryAgainPage href={retry} />), 403);
 }

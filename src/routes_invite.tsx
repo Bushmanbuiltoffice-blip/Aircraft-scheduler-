@@ -10,7 +10,7 @@ import { SESSION_DAYS, type AppEnv } from "./types";
 
 function noStore(c: Context<AppEnv>): void {
   c.header("Cache-Control", "no-store");
-  c.header("Referrer-Policy", "no-referrer");
+  c.header("Referrer-Policy", "same-origin");
 }
 
 export function registerInvites(app: Hono<AppEnv>): void {
