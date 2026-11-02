@@ -565,3 +565,15 @@ td.owed { color: #6d4b00; font-weight: 600; }
   .log-table td.pay-cell { min-width: 0; padding-top: 0.35rem; }
   .log-table td[colspan] { grid-column: 1 / -1; }
 }
+
+/* Meter entry and the TBX hand-off */
+.check-confirm { display: flex; align-items: flex-start; gap: 0.55rem; font-weight: 600; }
+.check-confirm input { width: 1.2rem; height: 1.2rem; margin-top: 0.1rem; flex: none; }
+.meter-form input[inputmode="decimal"] { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 1.1rem; }
+.tbx-meters { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 0.8rem; margin: 0.8rem 0; }
+.tbx-meter { display: flex; flex-direction: column; gap: 0.3rem; padding: 0.8rem 1rem; border: 1px solid #ece3d3; border-radius: 12px; background: #fffdf8; }
+.tbx-meter strong { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 1.8rem; }
+.tbx-meter .btn { align-self: flex-start; }
+.tbx-mark { margin-top: 1rem; display: flex; flex-direction: column; gap: 0.7rem; align-items: flex-start; }
+.copy-status { margin-left: 0.5rem; }
+.tbx-link { font-size: 0.85rem; }

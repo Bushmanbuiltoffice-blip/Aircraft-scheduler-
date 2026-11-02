@@ -1,7 +1,7 @@
 /** @jsxImportSource hono/jsx */
 import type { Context, Hono } from "hono";
 import { RESOURCE_TONES, buildDayBoard, buildMonthCalendar, buildWeekBoard, type BoardEvent, type BoardResource, type MonthEntry } from "./board";
-import { booksOnlySelf, canBookDespiteEligibility, computeFlightCost, eligibilityAllowsBooking, medicalWaivedByInstructor, pilotEligibility, validateReservationWindow } from "./domain";
+import { booksOnlySelf, canBookDespiteEligibility, computeFlightCost, eligibilityAllowsBooking, medicalWaivedByInstructor, meterWarnings, pilotEligibility, validateReservationWindow } from "./domain";
 import { createEmailSender, reservationMessage, safeSend } from "./email";
 import { formatMoney, parseMeter } from "./format";
 import { buildIcal, type IcalEvent } from "./ical";
@@ -33,7 +33,7 @@ import {
   monthTotals,
   updateReservationIfFree,
 } from "./db";
-import { field, isUuid, readForm, viewerOf } from "./http";
+import { checked, field, isUuid, readForm, viewerOf } from "./http";
 import { DASHBOARD_LOG_LIMIT, DashboardPage } from "./pages_dash";
 import { LogDetailPage, LogsPage } from "./pages_logs";
 import { ReservationPage } from "./pages_reservation";
@@ -246,9 +246,15 @@ export function registerSchedule(app: Hono<AppEnv>): void {
     if (!entry) return c.notFound();
     if (!canManage(user, entry)) return forbidden(c);
     const data = await readForm(c);
-    const hobbs = parseMeter(field(data, "hobbs_out"));
-    const tach = parseMeter(field(data, "tach_out"));
+    const hobbsRaw = field(data, "hobbs_out");
+    const tachRaw = field(data, "tach_out");
+    const hobbs = parseMeter(hobbsRaw);
+    const tach = parseMeter(tachRaw);
+    if (!hobbsRaw || !tachRaw) return renderReservation(c, entry.id, "Enter both Hobbs out and tach out from the airplane's meters.");
     if (hobbs == null || tach == null) return renderReservation(c, entry.id, "Enter Hobbs and tach out with at most one decimal.");
+    if (!checked(data, "meters_confirmed")) {
+      return renderReservation(c, entry.id, "Confirm that you read Hobbs and tach on the airplane before checking out.");
+    }
     const ok = await checkoutReservation(c.env.DB, entry.id, hobbs, tach, new Date().toISOString());
     if (!ok) return renderReservation(c, entry.id, "Only a scheduled reservation can be checked out.");
     return c.redirect(`/reservations/${entry.id}?notice=checked-out`, 303);
@@ -263,8 +269,11 @@ export function registerSchedule(app: Hono<AppEnv>): void {
       return renderReservation(c, entry.id, "Check the aircraft out before checking it in.");
     }
     const data = await readForm(c);
-    const hobbsIn = parseMeter(field(data, "hobbs_in"));
-    const tachIn = parseMeter(field(data, "tach_in"));
+    const hobbsInRaw = field(data, "hobbs_in");
+    const tachInRaw = field(data, "tach_in");
+    if (!hobbsInRaw || !tachInRaw) return renderReservation(c, entry.id, "Enter both Hobbs in and tach in from the airplane's meters.");
+    const hobbsIn = parseMeter(hobbsInRaw);
+    const tachIn = parseMeter(tachInRaw);
     if (hobbsIn == null || tachIn == null) return renderReservation(c, entry.id, "Enter Hobbs and tach in with at most one decimal.");
     const aircraft = await getAircraft(c.env.DB, entry.aircraftId);
     if (!aircraft) return c.notFound();
@@ -501,6 +510,11 @@ async function renderReservation(c: Context<AppEnv>, id: string, actionError: st
         })
       : null;
   const warnings = eligibility ? eligibility.blocks.concat(eligibility.warnings) : [];
+  // While the airplane is out, compare the check-out readings with what the airplane last recorded.
+  const meterNotes =
+    entry.status === "checked_out" && aircraft && entry.hobbsOut != null && entry.tachOut != null && !log
+      ? meterWarnings({ stage: "checkout", hobbsFrom: aircraft.hobbs, hobbsTo: entry.hobbsOut, tachFrom: aircraft.tach, tachTo: entry.tachOut })
+      : [];
   if (pilot?.role === "student" && !entry.instructorId && entry.status !== "cancelled") warnings.push(STUDENT_SOLO_WARNING);
   return c.html(
     document(
@@ -511,7 +525,9 @@ async function renderReservation(c: Context<AppEnv>, id: string, actionError: st
         usingDevSecret={c.get("usingDevSecret")}
         entry={entry}
         canManage={canManage(user, entry)}
-        warnings={entry.status === "scheduled" ? warnings : []}
+        warnings={entry.status === "scheduled" ? warnings : meterNotes}
+        aircraftHobbs={aircraft?.hobbs ?? null}
+        aircraftTach={aircraft?.tach ?? null}
         log={log}
         hobbsSuggestion={aircraft?.hobbs == null ? "" : aircraft.hobbs.toFixed(1)}
         tachSuggestion={aircraft?.tach == null ? "" : aircraft.tach.toFixed(1)}

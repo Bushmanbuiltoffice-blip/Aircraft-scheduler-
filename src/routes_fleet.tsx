@@ -413,6 +413,7 @@ async function renderAircraft(c: Context<AppEnv>, id: string, errors: string[], 
         blocks={blocks}
         upcoming={upcomingAll.filter((item) => item.aircraftId === aircraft.id)}
         groundedNow={aircraft.status === "grounded"}
+        aircraftId={aircraft.id}
       />,
     ),
     errors.length ? 422 : 200,

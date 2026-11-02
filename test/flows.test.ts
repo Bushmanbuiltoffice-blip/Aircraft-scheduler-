@@ -509,7 +509,7 @@ describe("scheduling", () => {
     const location = booked.headers.get("location") ?? "";
     const id = /\/reservations\/([^?]+)/.exec(location)?.[1];
     expect(id).toBeTruthy();
-    const out = await post(`/reservations/${id}/checkout`, { hobbs_out: "100.0", tach_out: "80.0" }, cookie);
+    const out = await post(`/reservations/${id}/checkout`, { hobbs_out: "100.0", tach_out: "80.0", meters_confirmed: "yes" }, cookie);
     expect(out.status).toBe(303);
     const done = await post(`/reservations/${id}/checkin`, { hobbs_in: "101.4", tach_in: "81.1" }, cookie);
     expect(done.status).toBe(303);

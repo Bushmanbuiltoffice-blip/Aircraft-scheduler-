@@ -9,6 +9,7 @@ import { registerAuth } from "./routes_auth";
 import { registerFleet } from "./routes_fleet";
 import { registerInvites } from "./routes_invite";
 import { registerResources } from "./routes_resources";
+import { registerTbx } from "./routes_tbx";
 import { registerSchedule } from "./routes_schedule";
 import { ORG_NAME, type AppEnv } from "./types";
 import { document, SimpleMessage, TryAgainPage } from "./ui";
@@ -97,6 +98,7 @@ export function createApp(): Hono<AppEnv> {
   registerFleet(app);
   registerSchedule(app);
   registerResources(app);
+  registerTbx(app);
 
   app.notFound((c) =>
     c.html(document(<SimpleMessage title="Page not found" message={`That page is not on ${ORG_NAME}.`} />), 404),

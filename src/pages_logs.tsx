@@ -4,7 +4,8 @@ import { formatDateTime } from "./time";
 import type { FlightLogView, User } from "./types";
 import { LogTable } from "./pages_dash";
 import { canMarkPaid, PaymentControl } from "./payment";
-import { Layout, PageHead, RolePill, type Viewer } from "./ui";
+import { meterWarnings } from "./domain";
+import { Layout, PageHead, RolePill, Warnings, type Viewer } from "./ui";
 
 export function LogsPage(props: {
   viewer: Viewer;
@@ -45,6 +46,13 @@ export function LogDetailPage(props: { viewer: Viewer; path: string; usingDevSec
       <PageHead title={`${log.tailNumber} · ${formatHours(log.flightHours)} hr`} lede={formatDateTime(log.createdAt)}>
         <a class="btn secondary" href={`/reservations/${log.reservationId}`}>Reservation</a>
       </PageHead>
+      <Warnings
+        warnings={
+          log.imported
+            ? []
+            : meterWarnings({ stage: "checkin", hobbsFrom: log.hobbsOut, hobbsTo: log.hobbsIn, tachFrom: log.tachOut, tachTo: log.tachIn ?? log.tachOut ?? 0 })
+        }
+      />
       <section class="card card-pad detail-grid">
         <dl>
           <div><dt>Pilot</dt><dd><a href={`/pilots/${log.pilotId}`}>{log.pilotName}</a>{log.pilotRole === "student" ? <> <RolePill role="student" /></> : null}</dd></div>
@@ -54,7 +62,7 @@ export function LogDetailPage(props: { viewer: Viewer; path: string; usingDevSec
             <div><dt>Rate</dt><dd>{rateLabel(log.rateBasis)} · {formatMoney(log.aircraftRateCents)}/hr</dd></div>
           )}
           <div><dt>Hobbs</dt><dd>{formatMeter(log.hobbsOut)} → {formatMeter(log.hobbsIn)}</dd></div>
-          <div><dt>Tach</dt><dd>{formatMeter(log.tachOut)} → {formatMeter(log.tachIn)}</dd></div>
+          <div><dt>Tach (maintenance, not billed)</dt><dd>{formatMeter(log.tachOut)} → {formatMeter(log.tachIn)}</dd></div>
           {log.imported ? <HistoricalDetails log={log} /> : null}
         </dl>
         <FlightChargeCard log={log} admin={canMarkPaid(props.viewer.role)} returnTo={`/logs/${log.id}`} />

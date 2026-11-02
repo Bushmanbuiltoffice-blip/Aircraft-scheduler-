@@ -228,7 +228,7 @@ describe("medical with an instructor aboard", () => {
     );
     expect(dual.status).toBe(303);
     const id = reservationId(dual);
-    const out = await post(`/reservations/${id}/checkout`, { hobbs_out: "100.0", tach_out: "80.0" }, cookie);
+    const out = await post(`/reservations/${id}/checkout`, { hobbs_out: "100.0", tach_out: "80.0", meters_confirmed: "yes" }, cookie);
     expect(out.status).toBe(303);
     const back = await post(`/reservations/${id}/checkin`, { hobbs_in: "101.5", tach_in: "81.2" }, cookie);
     expect(back.status).toBe(303);

@@ -20,6 +20,8 @@ export function ReservationPage(props: {
   aircraftRateCents: number | null;
   instructorRateCents: number | null;
   actionError?: string | null;
+  aircraftHobbs?: number | null;
+  aircraftTach?: number | null;
 }) {
   const entry = props.entry;
   const estimateRate = props.instructorRateCents ?? 0;
@@ -40,7 +42,7 @@ export function ReservationPage(props: {
             <div><dt>Rate basis</dt><dd>{rateLabel(entry.rateBasis)}</dd></div>
             <div><dt>Aircraft</dt><dd><a class="tail" href={`/aircraft/${entry.aircraftId}`}>{entry.tailNumber}</a></dd></div>
             <div><dt>Hobbs out / in</dt><dd>{formatMeter(entry.hobbsOut)} / {formatMeter(entry.hobbsIn)}</dd></div>
-            <div><dt>Tach out / in</dt><dd>{formatMeter(entry.tachOut)} / {formatMeter(entry.tachIn)}</dd></div>
+            <div><dt>Tach out / in (maintenance, not billed)</dt><dd>{formatMeter(entry.tachOut)} / {formatMeter(entry.tachIn)}</dd></div>
             {props.log?.imported ? <HistoricalDetails log={props.log} /> : null}
           </dl>
           {entry.notes ? <p class="notes">{entry.notes}</p> : null}
@@ -60,15 +62,26 @@ export function ReservationPage(props: {
       {props.canManage && entry.status === "scheduled" ? (
         <section class="card card-pad">
           <h2>Check out</h2>
-          <p class="muted">Record the meters before the flight. Suggested values are the aircraft's current readings.</p>
-          <form method="post" action={`/reservations/${entry.id}/checkout`} class="fields">
+          <p class="muted">
+            Read both meters on the airplane before every flight. The boxes start with the last recorded readings
+            {props.aircraftHobbs != null || props.aircraftTach != null
+              ? ` (Hobbs ${formatMeter(props.aircraftHobbs ?? null)} · Tach ${formatMeter(props.aircraftTach ?? null)})`
+              : ""}
+            . Change them if the airplane shows something different.
+          </p>
+          <form method="post" action={`/reservations/${entry.id}/checkout`} class="fields meter-form">
             <label>
-              Hobbs out
-              <input name="hobbs_out" inputmode="decimal" required value={props.hobbsSuggestion} />
+              Hobbs out (required, billed)
+              <input name="hobbs_out" inputmode="decimal" pattern="\d{1,6}(\.\d)?" required value={props.hobbsSuggestion} aria-describedby="meter-format" />
             </label>
             <label>
-              Tach out
-              <input name="tach_out" inputmode="decimal" required value={props.tachSuggestion} />
+              Tach out (required, maintenance only, not billed)
+              <input name="tach_out" inputmode="decimal" pattern="\d{1,6}(\.\d)?" required value={props.tachSuggestion} aria-describedby="meter-format" />
+            </label>
+            <small id="meter-format" class="wide muted">Hours with one decimal, like 318.6. Charges use Hobbs only. Tach is for maintenance tracking (TBX) and is not billed.</small>
+            <label class="wide check-confirm">
+              <input type="checkbox" name="meters_confirmed" value="yes" required />
+              I read Hobbs and tach on the airplane's meters.
             </label>
             <div class="actions wide">
               <button class="btn amber" type="submit">Check out</button>
@@ -90,13 +103,14 @@ export function ReservationPage(props: {
           >
             <p class="wide muted">Hobbs out {formatMeter(entry.hobbsOut)} · Tach out {formatMeter(entry.tachOut)}</p>
             <label>
-              Hobbs in
-              <input name="hobbs_in" inputmode="decimal" required />
+              Hobbs in (required, billed)
+              <input name="hobbs_in" inputmode="decimal" pattern="\d{1,6}(\.\d)?" required placeholder={`more than ${formatMeter(entry.hobbsOut)}`} />
             </label>
             <label>
-              Tach in
-              <input name="tach_in" inputmode="decimal" required />
+              Tach in (required, maintenance only, not billed)
+              <input name="tach_in" inputmode="decimal" pattern="\d{1,6}(\.\d)?" required placeholder={`at least ${formatMeter(entry.tachOut)}`} />
             </label>
+            <small class="wide muted">Read both meters after shutdown. Hours with one decimal. Charges use Hobbs only. Tach is for maintenance tracking (TBX) and never changes the bill.</small>
             <p id="checkin-estimate" class="wide estimate">Enter Hobbs in to preview the cost.</p>
             <div class="actions wide">
               <button class="btn" type="submit">Check in and bill</button>

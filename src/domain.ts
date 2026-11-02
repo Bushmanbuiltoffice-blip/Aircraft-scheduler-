@@ -188,3 +188,37 @@ export function validateReservationWindow(startsAt: Date, endsAt: Date, now = ne
   if (endsAt.getTime() < now.getTime() - 60_000) return "That reservation is already over.";
   return null;
 }
+
+/** More than this many hours on one flight (or between the last recorded meter and check-out) gets a warning. */
+export const METER_JUMP_WARN_HOURS = 10;
+
+const meterText = (value: number) => value.toFixed(1);
+
+/**
+ * Soft checks on Hobbs and tach. These never block a check-out or check-in; they only warn,
+ * because a meter can legitimately move (maintenance runs, a swapped meter).
+ */
+export function meterWarnings(input: {
+  stage: "checkout" | "checkin";
+  hobbsFrom: number | null;
+  hobbsTo: number;
+  tachFrom: number | null;
+  tachTo: number;
+}): string[] {
+  const out: string[] = [];
+  const pairs: Array<[string, number | null, number]> = [
+    ["Hobbs", input.hobbsFrom, input.hobbsTo],
+    ["Tach", input.tachFrom, input.tachTo],
+  ];
+  for (const [name, from, to] of pairs) {
+    if (from == null) continue;
+    const delta = Math.round((to - from) * 10) / 10;
+    if (input.stage === "checkout") {
+      if (delta < 0) out.push(`${name} out ${meterText(to)} is lower than the airplane's last recorded ${name.toLowerCase()} ${meterText(from)}. Double-check the meter.`);
+      else if (delta > METER_JUMP_WARN_HOURS) out.push(`${name} out ${meterText(to)} is ${meterText(delta)} hours above the last recorded ${meterText(from)}. Was it flown without being logged here?`);
+    } else if (delta > METER_JUMP_WARN_HOURS) {
+      out.push(`${name} went up ${meterText(delta)} hours on this flight (${meterText(from)} → ${meterText(to)}). Double-check the reading.`);
+    }
+  }
+  return out;
+}

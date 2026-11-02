@@ -291,7 +291,7 @@ describe("historical flight import", () => {
     const pilotPage = await get(`/pilots/${noah?.id}`, cookie);
     expect(await pilotPage.text()).toContain("already paid outside the app");
 
-    const checkedOut = await post(`/reservations/${futureId}/checkout`, { hobbs_out: "400.0", tach_out: "500.0" }, cookie);
+    const checkedOut = await post(`/reservations/${futureId}/checkout`, { hobbs_out: "400.0", tach_out: "500.0", meters_confirmed: "yes" }, cookie);
     expect(checkedOut.status).toBe(303);
     const checkedIn = await post(`/reservations/${futureId}/checkin`, { hobbs_in: "401.0", tach_in: "501.0" }, cookie);
     expect(checkedIn.status).toBe(303);

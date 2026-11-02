@@ -54,7 +54,8 @@ export function DashboardPage(props: {
                   <span>{item.make} {item.model}</span>
                 </a>
                 <span class={`pill ${item.status}`}>{statusLabel(item.status)}</span>
-                {down ? <small class="muted">Down: {down.reason}</small> : <small class="muted">Hobbs {formatMeter(item.hobbs)}</small>}
+                {down ? <small class="muted">Down: {down.reason}</small> : <small class="muted">Hobbs {formatMeter(item.hobbs)} · Tach {formatMeter(item.tach)}</small>}
+                {props.viewer.role === "admin" ? <a class="tbx-link" href={`/aircraft/${item.id}/tbx`}>TBX update</a> : null}
               </li>
             );
           })}

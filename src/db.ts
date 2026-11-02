@@ -979,10 +979,18 @@ export async function getFlightLog(db: D1Database, id: string): Promise<FlightLo
 
 export async function listFlightLogs(
   db: D1Database,
-  filter: { pilotId?: string | null; instructorOrPilotId?: string | null; limit?: number },
+  filter: { pilotId?: string | null; instructorOrPilotId?: string | null; aircraftId?: string | null; sinceIso?: string | null; limit?: number },
 ): Promise<FlightLogView[]> {
   const clauses: string[] = [];
   const binds: string[] = [];
+  if (filter.aircraftId) {
+    clauses.push("f.aircraft_id = ?");
+    binds.push(filter.aircraftId);
+  }
+  if (filter.sinceIso) {
+    clauses.push("f.created_at > ?");
+    binds.push(filter.sinceIso);
+  }
   if (filter.pilotId) {
     clauses.push("f.pilot_id = ?");
     binds.push(filter.pilotId);
@@ -1185,4 +1193,33 @@ export async function listOutbox(db: D1Database, limit = 8): Promise<OutboxRow[]
 
 export function isUniqueError(error: unknown): boolean {
   return error instanceof Error && /UNIQUE/i.test(error.message);
+}
+
+export type TbxEntry = { id: string; aircraftId: string; hobbs: number; tach: number; enteredBy: string | null; enteredByName: string | null; enteredAt: string };
+
+export async function listTbxEntries(db: D1Database, aircraftId: string, limit = 10): Promise<TbxEntry[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT t.id, t.aircraft_id, t.hobbs, t.tach, t.entered_by, t.entered_at, u.name AS entered_by_name
+       FROM tbx_entries t LEFT JOIN users u ON u.id = t.entered_by
+       WHERE t.aircraft_id = ? ORDER BY t.entered_at DESC LIMIT ?`,
+    )
+    .bind(aircraftId, limit)
+    .all<{ id: string; aircraft_id: string; hobbs: number; tach: number; entered_by: string | null; entered_at: string; entered_by_name: string | null }>();
+  return results.map((row) => ({
+    id: row.id,
+    aircraftId: row.aircraft_id,
+    hobbs: row.hobbs,
+    tach: row.tach,
+    enteredBy: row.entered_by,
+    enteredByName: row.entered_by_name,
+    enteredAt: row.entered_at,
+  }));
+}
+
+export async function insertTbxEntry(db: D1Database, input: { aircraftId: string; hobbs: number; tach: number; enteredBy: string }): Promise<void> {
+  await db
+    .prepare("INSERT INTO tbx_entries (id, aircraft_id, hobbs, tach, entered_by, entered_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .bind(crypto.randomUUID(), input.aircraftId, input.hobbs, input.tach, input.enteredBy, new Date().toISOString())
+    .run();
 }
