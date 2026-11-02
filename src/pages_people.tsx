@@ -1,4 +1,5 @@
 /** @jsxImportSource hono/jsx */
+import { canMarkPaid } from "./payment";
 import { certificateLabel, centsToDollarInput, formatHours, formatMoney, medicalLabel, roleLabel } from "./format";
 import { formatDate, formatDateTime } from "./time";
 import type { Aircraft, Checkout, FlightLogView, Role, ScheduleEntry, User } from "./types";
@@ -253,7 +254,7 @@ export function PersonFormPage(props: {
       {props.logs ? (
         <section class="card">
           <header class="section-head pad"><h2>Billing</h2></header>
-          <Logs logs={props.logs} />
+          <Logs logs={props.logs} admin={canMarkPaid(props.viewer.role)} returnTo={props.mode === "self" ? "/account" : `/pilots/${props.personId ?? ""}`} />
           <p class="pad muted">
             {billingSummary(props.logs)}
           </p>
@@ -283,7 +284,7 @@ export function RemovedPersonPage(props: {
       {props.logs.length > 0 ? (
         <section class="card">
           <header class="section-head pad"><h2>Flight logs</h2></header>
-          <Logs logs={props.logs} />
+          <Logs logs={props.logs} admin={canMarkPaid(props.viewer.role)} returnTo={`/pilots/${props.person.id}`} />
         </section>
       ) : null}
     </Layout>
@@ -375,8 +376,10 @@ function billingSummary(logs: FlightLogView[]): string {
   const inApp = logs.filter((log) => log.billingStatus !== "external");
   const outside = logs.length - inApp.length;
   const cents = inApp.reduce((sum, log) => sum + log.totalCostCents, 0);
+  const unpaid = inApp.filter((log) => !log.paid);
+  const owed = unpaid.reduce((sum, log) => sum + log.totalCostCents, 0);
   const hours = logs.reduce((sum, log) => sum + log.flightHours, 0);
-  const billed = `${inApp.length} billed in this app · ${formatHours(hours)} Hobbs hours on the log · ${formatMoney(cents)} on the balance`;
+  const billed = `${inApp.length} billed in this app · ${formatHours(hours)} Hobbs hours on the log · ${formatMoney(cents)} billed · ${formatMoney(cents - owed)} paid · ${formatMoney(owed)} unpaid (${unpaid.length} ${unpaid.length === 1 ? "rental" : "rentals"})`;
   if (outside === 0) return billed;
   const noun = outside === 1 ? "flight stays" : "flights stay";
   return `${billed}. ${outside} historical ${noun} on this list as already paid outside the app.`;

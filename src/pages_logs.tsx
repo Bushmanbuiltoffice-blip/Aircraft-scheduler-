@@ -3,6 +3,7 @@ import { BILLED_OUTSIDE_LABEL, formatHours, formatMeter, formatMoney, formatQuan
 import { formatDateTime } from "./time";
 import type { FlightLogView, User } from "./types";
 import { LogTable } from "./pages_dash";
+import { canMarkPaid, PaymentControl } from "./payment";
 import { Layout, PageHead, RolePill, type Viewer } from "./ui";
 
 export function LogsPage(props: {
@@ -15,7 +16,7 @@ export function LogsPage(props: {
 }) {
   return (
     <Layout title="Flight logs" user={props.viewer} path={props.path} usingDevSecret={props.usingDevSecret}>
-      <PageHead title="Flight logs" lede="Hobbs, tach, fuel, oil, and the amount billed at check-in. A row marked billed outside the app was already paid and is not on a balance." />
+      <PageHead title="Flight logs" lede="Hobbs, tach, fuel, oil, and the amount billed at check-in. New rentals start Unpaid until an admin or instructor marks them Paid. A row marked billed outside the app was already paid and is not on a balance." />
       {props.viewer.role === "admin" ? (
         <form class="toolbar" method="get" action="/logs">
           <label>
@@ -31,7 +32,7 @@ export function LogsPage(props: {
         </form>
       ) : null}
       <section class="card">
-        <LogTable logs={props.logs} />
+        <LogTable logs={props.logs} admin={canMarkPaid(props.viewer.role)} returnTo={props.pilotId ? `/logs?pilot=${encodeURIComponent(props.pilotId)}` : "/logs"} />
       </section>
     </Layout>
   );
@@ -56,7 +57,7 @@ export function LogDetailPage(props: { viewer: Viewer; path: string; usingDevSec
           <div><dt>Tach</dt><dd>{formatMeter(log.tachOut)} → {formatMeter(log.tachIn)}</dd></div>
           {log.imported ? <HistoricalDetails log={log} /> : null}
         </dl>
-        <FlightChargeCard log={log} />
+        <FlightChargeCard log={log} admin={canMarkPaid(props.viewer.role)} returnTo={`/logs/${log.id}`} />
       </section>
     </Layout>
   );
@@ -76,8 +77,9 @@ export function HistoricalDetails(props: { log: FlightLogView }) {
   );
 }
 
-export function FlightChargeCard(props: { log: FlightLogView }) {
+export function FlightChargeCard(props: { log: FlightLogView; admin?: boolean; returnTo?: string }) {
   const log = props.log;
+  const control = <PaymentControl log={log} admin={Boolean(props.admin)} returnTo={props.returnTo ?? `/logs/${log.id}`} showWho />;
   if (log.billingStatus === "external") {
     return (
       <aside class="cost-card">
@@ -88,6 +90,7 @@ export function FlightChargeCard(props: { log: FlightLogView }) {
           <li>Instructor charge {formatMoney(0)}</li>
         </ul>
         <strong>{formatMoney(0)}</strong>
+        <div class="cost-pay">{control}</div>
         <p>This flight is not on the pilot's balance.</p>
       </aside>
     );
@@ -99,6 +102,7 @@ export function FlightChargeCard(props: { log: FlightLogView }) {
         <li>Instructor {formatHours(log.instructorHours)} × {formatMoney(log.instructorRateCents)} = {formatMoney(log.instructorCostCents)}</li>
       </ul>
       <strong>{formatMoney(log.totalCostCents)}</strong>
+      <div class="cost-pay">{control}</div>
     </aside>
   );
 }

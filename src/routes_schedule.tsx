@@ -8,6 +8,7 @@ import { buildIcal, type IcalEvent } from "./ical";
 import { STUDENT_SOLO_WARNING, clashMessage, pageNotice } from "./copy";
 import {
   billingByPilot,
+  setFlightLogPaid,
   cancelReservation,
   checkInReservation,
   checkoutReservation,
@@ -38,6 +39,7 @@ import { LogDetailPage, LogsPage } from "./pages_logs";
 import { ReservationPage } from "./pages_reservation";
 import { ReservationFormPage, SchedulePage, type ReservationFormValues } from "./pages_schedule";
 import { document, SimpleMessage } from "./ui";
+import { canMarkPaid, safeReturnPath } from "./payment";
 import {
   addDays,
   defaultBookingWindow,
@@ -331,6 +333,25 @@ export function registerSchedule(app: Hono<AppEnv>): void {
         <LogDetailPage viewer={viewerOf(user)} path="/logs" usingDevSecret={c.get("usingDevSecret")} log={log} />,
       ),
     );
+  });
+
+  app.post("/logs/:id/paid", async (c) => {
+    const user = mustUser(c);
+    if (!canMarkPaid(user.role)) return forbidden(c);
+    const id = c.req.param("id");
+    const log = await getFlightLog(c.env.DB, id);
+    if (!log) return c.notFound();
+    const data = await readForm(c);
+    const back = safeReturnPath(data.next, `/logs/${id}`);
+    if (log.billingStatus === "external") {
+      return c.html(
+        document(<SimpleMessage title="Billed outside the app" message="This historical flight was paid outside the app. Its status cannot be changed here." />),
+        409,
+      );
+    }
+    const paid = data.paid === "1" ? true : data.paid === "0" ? false : !log.paid;
+    await setFlightLogPaid(c.env.DB, { id, paid, by: user.id });
+    return c.redirect(back, 303);
   });
 
   app.get("/ical/:token", async (c) => {

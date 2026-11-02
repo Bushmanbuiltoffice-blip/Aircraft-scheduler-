@@ -524,3 +524,44 @@ dd { margin: 0.1rem 0 0; }
   .resource-actions .btn { flex: 1 1 auto; text-align: center; }
   .resource-upload .fields { grid-template-columns: 1fr; }
 }
+
+/* Paid / unpaid on rentals */
+.pay-control { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0.35rem 0.5rem; }
+.pay-badge {
+  display: inline-block; border-radius: 999px; padding: 0.15rem 0.6rem;
+  font-size: 0.8rem; font-weight: 650; white-space: nowrap; border: 1px solid transparent;
+}
+.pay-paid { background: #e5f4ec; color: #145233; border-color: #b9e0c8; }
+.pay-unpaid { background: #fff1cc; color: #6d4b00; border-color: #f0d27a; }
+.pay-outside { background: #e7f1ea; color: #2c5a3c; border-color: #cfe3d5; }
+.pay-form { display: inline; margin: 0; }
+.pay-toggle {
+  font: inherit; font-size: 0.8rem; font-weight: 600; cursor: pointer;
+  min-height: 2rem; padding: 0.25rem 0.7rem; border-radius: 999px;
+  border: 1px solid #cbbfaa; background: #fffdf8; color: var(--ink);
+}
+.pay-toggle.to-paid { border-color: #2f7a4d; color: #145233; }
+.pay-toggle:hover, .pay-toggle:focus-visible { background: #f3ece0; }
+.pay-cell { min-width: 9.5rem; }
+.pay-who { display: block; width: 100%; }
+.cost-card .cost-pay { margin: 0.6rem 0 0.2rem; }
+.cost-card .pay-who { color: #c9d1de; }
+.cost-card .pay-toggle { background: #f7f3ea; }
+.billing-outstanding { margin: 0 0 0.6rem; }
+td.owed { color: #6d4b00; font-weight: 600; }
+@media (max-width: 760px) {
+  .pay-toggle { min-height: 2.5rem; padding: 0.35rem 0.9rem; }
+}
+/* Flight log tables become cards on phones so the amount and Paid / Unpaid stay on screen. */
+@media (max-width: 760px) {
+  .log-table thead { display: none; }
+  table.log-table { min-width: 0; }
+  .log-table, .log-table tbody, .log-table tr, .log-table td { display: block; width: 100%; box-sizing: border-box; }
+  .log-table tr { box-sizing: border-box; display: grid; grid-template-columns: 1fr 1fr; gap: 0.15rem 0.8rem; padding: 0.75rem 0.9rem; border-top: 1px solid #ece3d3; }
+  .log-table tbody tr:first-child { border-top: 0; }
+  .log-table td { border: 0; padding: 0.1rem 0; }
+  .log-table td[data-label]::before { content: attr(data-label); display: block; font-size: 0.68rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+  .log-table td[data-label="When"], .log-table td[data-label="Pilot"], .log-table td.pay-cell { grid-column: 1 / -1; }
+  .log-table td.pay-cell { min-width: 0; padding-top: 0.35rem; }
+  .log-table td[colspan] { grid-column: 1 / -1; }
+}

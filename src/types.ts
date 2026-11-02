@@ -141,6 +141,11 @@ export interface FlightLog {
   guestInstructorName: string | null;
   billingStatus: BillingStatus;
   billingNote: string | null;
+  /** In-app rentals only. Admins toggle this; new rentals start unpaid. */
+  paid: boolean;
+  paidAt: string | null;
+  paidBy: string | null;
+  paidByName: string | null;
 }
 
 export type ScheduleEntry = {
@@ -182,4 +187,7 @@ export type PilotBilling = {
   flights: number;
   hours: number;
   totalCents: number;
+  paidCents: number;
+  unpaidCents: number;
+  unpaidFlights: number;
 };

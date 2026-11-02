@@ -943,6 +943,7 @@ const FLIGHT_LOG_SELECT = `
   f.ground_hours, f.aircraft_paid, f.instructor_paid, f.maintenance_flight,
   f.fuel_added_gal, f.oil_added_qt, f.rental_type, f.imported,
   f.instructor_name AS guest_instructor_name, f.billing_status, f.billing_note,
+  f.paid, f.paid_at, f.paid_by, (SELECT name FROM users WHERE id = f.paid_by) AS paid_by_name,
   p.name AS pilot_name, p.role AS pilot_role, i.name AS linked_instructor_name, a.tail_number, a.make, a.model
 `;
 
@@ -1037,6 +1038,10 @@ type FlightLogRow = {
   guest_instructor_name: string | null;
   billing_status: string;
   billing_note: string | null;
+  paid: number | null;
+  paid_at: string | null;
+  paid_by: string | null;
+  paid_by_name: string | null;
   pilot_name: string;
   pilot_role: Role;
   linked_instructor_name: string | null;
@@ -1078,6 +1083,10 @@ function mapFlightLog(row: FlightLogRow): FlightLogView {
     guestInstructorName,
     billingStatus,
     billingNote: row.billing_note,
+    paid: billingStatus === "in_app" && row.paid === 1,
+    paidAt: row.paid_at,
+    paidBy: row.paid_by,
+    paidByName: row.paid_by_name,
     pilotName: row.pilot_name,
     pilotRole: row.pilot_role,
     instructorName: row.linked_instructor_name ?? guestInstructorName,
@@ -1093,21 +1102,50 @@ export async function billingByPilot(db: D1Database): Promise<PilotBilling[]> {
       `SELECT u.id, u.name,
               COUNT(f.id) AS flights,
               COALESCE(SUM(f.flight_hours), 0) AS hours,
-              COALESCE(SUM(f.total_cost_cents), 0) AS total_cents
+              COALESCE(SUM(f.total_cost_cents), 0) AS total_cents,
+              COALESCE(SUM(CASE WHEN f.paid = 1 THEN f.total_cost_cents ELSE 0 END), 0) AS paid_cents,
+              COALESCE(SUM(CASE WHEN f.paid = 1 THEN 0 ELSE f.total_cost_cents END), 0) AS unpaid_cents,
+              COALESCE(SUM(CASE WHEN f.paid = 1 THEN 0 ELSE 1 END), 0) AS unpaid_flights
        FROM users u
        JOIN flight_logs f ON f.pilot_id = u.id AND f.billing_status != 'external'
        WHERE u.deleted_at IS NULL
        GROUP BY u.id
-       ORDER BY total_cents DESC, u.name`,
+       ORDER BY unpaid_cents DESC, total_cents DESC, u.name`,
     )
-    .all<{ id: string; name: string; flights: number; hours: number; total_cents: number }>();
+    .all<{ id: string; name: string; flights: number; hours: number; total_cents: number; paid_cents: number; unpaid_cents: number; unpaid_flights: number }>();
   return results.map((row) => ({
     id: row.id,
     name: row.name,
     flights: Number(row.flights),
     hours: Number(row.hours),
     totalCents: Number(row.total_cents),
+    paidCents: Number(row.paid_cents),
+    unpaidCents: Number(row.unpaid_cents),
+    unpaidFlights: Number(row.unpaid_flights),
   }));
+}
+
+/** Marks an in-app rental paid or unpaid. Returns false for missing or billed-outside rows. */
+export async function setFlightLogPaid(db: D1Database, input: { id: string; paid: boolean; by: string }): Promise<boolean> {
+  const result = await db
+    .prepare(
+      `UPDATE flight_logs SET paid = ?, paid_at = ?, paid_by = ?
+       WHERE id = ? AND billing_status != 'external'`,
+    )
+    .bind(input.paid ? 1 : 0, input.paid ? new Date().toISOString() : null, input.paid ? input.by : null, input.id)
+    .run();
+  return (result.meta.changes ?? 0) > 0;
+}
+
+/** Everything still owed on in-app rentals. */
+export async function outstandingTotal(db: D1Database): Promise<{ cents: number; flights: number }> {
+  const row = await db
+    .prepare(
+      `SELECT COALESCE(SUM(total_cost_cents), 0) AS cents, COUNT(*) AS flights
+       FROM flight_logs WHERE billing_status != 'external' AND paid = 0`,
+    )
+    .first<{ cents: number; flights: number }>();
+  return { cents: Number(row?.cents ?? 0), flights: Number(row?.flights ?? 0) };
 }
 
 /** Hobbs hours include every logged flight. The flight count and cents are in-app charges only. */

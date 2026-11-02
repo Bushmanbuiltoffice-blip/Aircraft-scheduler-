@@ -1,4 +1,5 @@
 /** @jsxImportSource hono/jsx */
+import { canMarkPaid } from "./payment";
 import { formatMeter, rateLabel, statusLabel } from "./format";
 import { formatDateTime, toDateTimeLocalValue } from "./time";
 import type { FlightLogView, ScheduleEntry } from "./types";
@@ -46,7 +47,7 @@ export function ReservationPage(props: {
         </div>
         {props.log ? (
           <div>
-            <FlightChargeCard log={props.log} />
+            <FlightChargeCard log={props.log} admin={canMarkPaid(props.viewer.role)} returnTo={`/reservations/${entry.id}`} />
             <p><a href={`/logs/${props.log.id}`}>Open the log</a></p>
           </div>
         ) : (

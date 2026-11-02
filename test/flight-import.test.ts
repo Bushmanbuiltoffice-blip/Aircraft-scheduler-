@@ -296,7 +296,7 @@ describe("historical flight import", () => {
     const checkedIn = await post(`/reservations/${futureId}/checkin`, { hobbs_in: "401.0", tach_in: "501.0" }, cookie);
     expect(checkedIn.status).toBe(303);
     const billing = await billingByPilot(db());
-    expect(billing).toEqual([{ id: admin.id, name: "Kyle Bushman", flights: 1, hours: 1, totalCents: 23000 }]);
+    expect(billing).toEqual([{ id: admin.id, name: "Kyle Bushman", flights: 1, hours: 1, totalCents: 23000, paidCents: 0, unpaidCents: 23000, unpaidFlights: 1 }]);
     const fresh = await get(checkedIn.headers.get("location") ?? "/", cookie);
     const freshHtml = await fresh.text();
     expect(freshHtml).toContain("$155.00");

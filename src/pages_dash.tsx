@@ -1,6 +1,7 @@
 /** @jsxImportSource hono/jsx */
 import { BILLED_OUTSIDE_LABEL, formatHours, formatMeter, formatMoney, statusLabel } from "./format";
 import { formatDateTime, formatTime } from "./time";
+import { canMarkPaid, PaymentControl } from "./payment";
 import type { Aircraft, Checkout, FlightLogView, MaintenanceBlock, PilotBilling, ScheduleEntry } from "./types";
 import { Layout, PageHead, RolePill, type Viewer } from "./ui";
 
@@ -107,7 +108,7 @@ export function DashboardPage(props: {
           <h2>Last {DASHBOARD_LOG_LIMIT} flights</h2>
           <a href="/logs">View all flight logs</a>
         </header>
-        <LogTable logs={props.logs.slice(0, DASHBOARD_LOG_LIMIT)} />
+        <LogTable logs={props.logs.slice(0, DASHBOARD_LOG_LIMIT)} admin={canMarkPaid(props.viewer.role)} returnTo="/" />
       </section>
       {props.viewer.role === "admin" ? (
         <section class="card">
@@ -115,6 +116,11 @@ export function DashboardPage(props: {
             <h2>Billing by pilot</h2>
             <span class="muted">{formatMoney(props.month.cents)} billed this month · {props.month.flights} in-app flights</span>
           </header>
+          <p class="pad billing-outstanding" id="dash-outstanding">
+            <strong>{formatMoney(props.billing.reduce((sum, row) => sum + row.unpaidCents, 0))}</strong> outstanding (unpaid rentals)
+            {" · "}
+            <a href="/logs">Mark rentals paid on the flight log</a>
+          </p>
           <div class="table-wrap">
             <table>
               <thead>
@@ -123,6 +129,8 @@ export function DashboardPage(props: {
                   <th>Flights</th>
                   <th>Hobbs</th>
                   <th>Billed</th>
+                  <th>Paid</th>
+                  <th>Unpaid</th>
                 </tr>
               </thead>
               <tbody>
@@ -132,10 +140,15 @@ export function DashboardPage(props: {
                     <td>{row.flights}</td>
                     <td>{formatHours(row.hours)}</td>
                     <td>{formatMoney(row.totalCents)}</td>
+                    <td>{formatMoney(row.paidCents)}</td>
+                    <td class={row.unpaidCents > 0 ? "owed" : ""}>
+                      {formatMoney(row.unpaidCents)}
+                      {row.unpaidFlights > 0 ? <small class="muted"> · {row.unpaidFlights} unpaid</small> : null}
+                    </td>
                   </tr>
                 ))}
                 {props.billing.length === 0 ? (
-                  <tr><td colspan={4} class="muted">No in-app charges yet. Cost is calculated at check-in. Flights billed outside the app stay on the flight log.</td></tr>
+                  <tr><td colspan={6} class="muted">No in-app charges yet. Cost is calculated at check-in. Flights billed outside the app stay on the flight log.</td></tr>
                 ) : null}
               </tbody>
             </table>
@@ -164,10 +177,11 @@ function ReservationList(props: { items: ScheduleEntry[] }) {
   );
 }
 
-export function LogTable(props: { logs: FlightLogView[] }) {
+export function LogTable(props: { logs: FlightLogView[]; admin?: boolean; returnTo?: string }) {
+  const returnTo = props.returnTo ?? "/logs";
   return (
     <div class="table-wrap">
-      <table>
+      <table class="log-table">
         <thead>
           <tr>
             <th>When</th>
@@ -177,37 +191,41 @@ export function LogTable(props: { logs: FlightLogView[] }) {
             <th>Hobbs</th>
             <th>Hours</th>
             <th>Total</th>
+            <th>Payment</th>
           </tr>
         </thead>
         <tbody>
           {props.logs.map((log) => (
-            <tr>
-              <td><a href={`/logs/${log.id}`}>{formatDateTime(log.createdAt)}</a></td>
-              <td>
+            <tr id={`log-${log.id}`}>
+              <td data-label="When"><a href={`/logs/${log.id}`}>{formatDateTime(log.createdAt)}</a></td>
+              <td data-label="Pilot">
                 {log.pilotName}
                 {log.pilotRole === "student" ? <> <RolePill role="student" /></> : null}
                 {log.instructorName ? <small class="muted"> with {log.instructorName}</small> : null}
               </td>
-              <td class="tail">{log.tailNumber}</td>
-              <td>{log.rentalType ?? "—"}</td>
-              <td>{formatMeter(log.hobbsOut)}–{formatMeter(log.hobbsIn)}</td>
-              <td>
+              <td data-label="Aircraft" class="tail">{log.tailNumber}</td>
+              <td data-label="Type">{log.rentalType ?? "—"}</td>
+              <td data-label="Hobbs">{formatMeter(log.hobbsOut)}–{formatMeter(log.hobbsIn)}</td>
+              <td data-label="Hours">
                 {formatHours(log.flightHours)}
                 {log.groundHours != null && log.groundHours > 0 ? <small class="muted">{formatHours(log.groundHours)} ground</small> : null}
               </td>
-              <td>
+              <td data-label="Total">
                 {log.billingStatus === "external" ? (
                   <>
                     <span class="pill external">Billed outside</span>
                     <small class="muted">{log.billingNote ?? BILLED_OUTSIDE_LABEL}</small>
                   </>
                 ) : (
-                  formatMoney(log.totalCostCents)
+                  <span class="amount">{formatMoney(log.totalCostCents)}</span>
                 )}
+              </td>
+              <td class="pay-cell" data-label="Payment">
+                <PaymentControl log={log} admin={Boolean(props.admin)} returnTo={`${returnTo}#log-${log.id}`} />
               </td>
             </tr>
           ))}
-          {props.logs.length === 0 ? <tr><td colspan={7} class="muted">No flights logged yet.</td></tr> : null}
+          {props.logs.length === 0 ? <tr><td colspan={8} class="muted">No flights logged yet.</td></tr> : null}
         </tbody>
       </table>
     </div>
