@@ -1,6 +1,7 @@
 import { env, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { hashPassword, newToken } from "../src/auth";
+import { replaceInsurancePdf } from "../src/documents";
 import { insertUser } from "../src/db";
 import { computeFlightCost } from "../src/domain";
 import { addDays, todayInZone } from "../src/time";
@@ -18,10 +19,16 @@ async function reset(): Promise<void> {
     DELETE FROM aircraft_checkouts;
     DELETE FROM invites;
     DELETE FROM tbx_entries;
+    DELETE FROM user_document_chunks;
+    DELETE FROM user_documents;
     DELETE FROM sessions;
     DELETE FROM aircraft;
     DELETE FROM users;
   `);
+}
+
+function samplePdf(): Uint8Array {
+  return new TextEncoder().encode("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n");
 }
 
 async function makeUser(partial: Partial<User> & Pick<User, "email" | "name" | "role">): Promise<User> {
@@ -126,6 +133,7 @@ beforeEach(async () => {
 describe("Hobbs and tach on every flight", () => {
   async function setup() {
     const admin = await makeUser({ email: "kyle@example.com", name: "Kyle Bushman", role: "admin" });
+    await replaceInsurancePdf(db(), { userId: admin.id, fileName: "sample-insurance.pdf", bytes: samplePdf(), uploadedBy: admin.id });
     const plane = await makePlane();
     const reservation = await makeReservation(admin.id, plane);
     return { admin, plane, reservation, cookie: await login(admin.email) };
@@ -235,6 +243,7 @@ describe("TBX update page (manual hand-off)", () => {
 
   it("shows current meters with copy buttons, lists flights since the last entry, exports CSV, and records entries", async () => {
     const admin = await makeUser({ email: "kyle@example.com", name: "Kyle Bushman", role: "admin" });
+    await replaceInsurancePdf(db(), { userId: admin.id, fileName: "sample-insurance.pdf", bytes: samplePdf(), uploadedBy: admin.id });
     const plane = await makePlane();
     const cookie = await login(admin.email);
     const reservation = await makeReservation(admin.id, plane);

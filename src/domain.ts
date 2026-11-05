@@ -100,6 +100,11 @@ export function medicalWaivedByInstructor(pilotRole: Role, hasInstructor: boolea
   return hasInstructor && booksOnlySelf(pilotRole);
 }
 
+/** Solo check-out needs the pilot's insurance PDF. An assigned instructor makes the flight dual and skips it. */
+export function soloCheckoutNeedsInsurance(instructorId: string | null | undefined): boolean {
+  return !instructorId;
+}
+
 export function pilotEligibility(input: {
   medicalExpiration: string | null;
   checkout: { status: string; expiresOn: string | null } | null;

@@ -3,7 +3,9 @@ import type { Context, Hono } from "hono";
 import { emailError, hashPassword, newToken, normalizeEmail, passwordError, UNUSABLE_PASSWORD_HASH, verifyPassword } from "./auth";
 import { pageNotice } from "./copy";
 import { inviteLinkResponse } from "./routes_invite";
+import { canManageInsurancePdf, getInsurancePdf, insuranceUserIds, replaceInsurancePdf, streamInsurancePdf } from "./documents";
 import { booksOnlySelf } from "./domain";
+import { contentDisposition, isPdf, MAX_UPLOAD_BYTES, formatBytes } from "./resources";
 import {
   countAdmins,
   deleteCheckout,
@@ -192,7 +194,10 @@ export function registerFleet(app: Hono<AppEnv>): void {
     if (booksOnlySelf(user.role)) return c.redirect("/account");
     const today = todayInZone();
     const people = await listUsers(c.env.DB);
-    const invites = user.role === "admin" ? await pendingInvites(c.env.DB) : new Map<string, string>();
+    const [invites, insuranceIds] = await Promise.all([
+      user.role === "admin" ? pendingInvites(c.env.DB) : Promise.resolve(new Map<string, string>()),
+      insuranceUserIds(c.env.DB),
+    ]);
     const checkoutCounts = new Map<string, number>();
     await Promise.all(
       people.map(async (person) => {
@@ -213,6 +218,7 @@ export function registerFleet(app: Hono<AppEnv>): void {
             checkoutCount: checkoutCounts.get(person.id) ?? 0,
             hasLogin: hasWorkingLogin(person),
             inviteExpiresAt: invites.get(person.id) ?? null,
+            insuranceOnFile: insuranceIds.has(person.id),
           }))}
         />,
       ),
@@ -324,6 +330,22 @@ export function registerFleet(app: Hono<AppEnv>): void {
     return c.redirect(`/pilots/${person.id}?notice=pilot-saved`, 303);
   });
 
+  app.get("/pilots/:id/insurance/view", (c) => serveInsurance(c, c.req.param("id"), "inline"));
+  app.get("/pilots/:id/insurance/download", (c) => serveInsurance(c, c.req.param("id"), "attachment"));
+  app.post("/pilots/:id/insurance", async (c) => {
+    const actor = mustUser(c);
+    const person = await getUserById(c.env.DB, c.req.param("id"));
+    if (!person) return c.notFound();
+    return saveInsurance(c, actor, person, "edit");
+  });
+
+  app.get("/account/insurance/view", (c) => serveInsurance(c, mustUser(c).id, "inline"));
+  app.get("/account/insurance/download", (c) => serveInsurance(c, mustUser(c).id, "attachment"));
+  app.post("/account/insurance", async (c) => {
+    const user = mustUser(c);
+    return saveInsurance(c, user, user, "self");
+  });
+
   app.get("/account", async (c) => {
     const user = mustUser(c);
     return personResponse(c, "self", personToForm(user), [], user);
@@ -426,6 +448,8 @@ async function personResponse(
   values: PersonFormValues,
   errors: string[],
   person: User | null,
+  insuranceError: string | null = null,
+  status?: 200 | 400 | 413 | 422,
 ): Promise<Response> {
   const user = mustUser(c);
   const aircraft = person ? await listAircraft(c.env.DB) : [];
@@ -433,6 +457,9 @@ async function personResponse(
   const upcoming = person ? await listReservationsForUser(c.env.DB, person.id, new Date(Date.now() - 86_400_000).toISOString()) : [];
   const logs = person && (user.role === "admin" || user.id === person.id) ? await listFlightLogs(c.env.DB, { pilotId: person.id, limit: 20 }) : undefined;
   const icalUrl = mode === "self" ? new URL(`/ical/${user.icalToken}`, c.req.url).toString() : null;
+  const insurance = person && mode !== "create" ? await getInsurancePdf(c.env.DB, person.id) : null;
+  const canEditInsurance = Boolean(person && mode !== "create" && !person.deletedAt && canManageInsurancePdf(user, person.id));
+  const insuranceBase = mode === "self" ? "/account/insurance" : `/pilots/${person?.id}/insurance`;
   return c.html(
     document(
       <PersonFormPage
@@ -456,10 +483,62 @@ async function personResponse(
         upcoming={upcoming}
         logs={logs}
         icalUrl={icalUrl}
+        insurance={
+          person && mode !== "create"
+            ? {
+                document: insurance
+                  ? { fileName: insurance.fileName, sizeBytes: insurance.sizeBytes, updatedAt: insurance.updatedAt }
+                  : null,
+                canEdit: canEditInsurance,
+                uploadAction: insuranceBase,
+                viewHref: insurance && canEditInsurance ? `${insuranceBase}/view` : null,
+                downloadHref: insurance && canEditInsurance ? `${insuranceBase}/download` : null,
+                error: insuranceError,
+              }
+            : null
+        }
       />,
     ),
-    errors.length ? 422 : 200,
+    status ?? (errors.length ? 422 : insuranceError ? 400 : 200),
   );
+}
+
+async function serveInsurance(c: Context<AppEnv>, userId: string, kind: "inline" | "attachment"): Promise<Response> {
+  const actor = mustUser(c);
+  if (!isUuid(userId) || !canManageInsurancePdf(actor, userId)) return forbidden(c);
+  const doc = await getInsurancePdf(c.env.DB, userId);
+  if (!doc) return c.notFound();
+  const headers = new Headers({
+    "Content-Type": "application/pdf",
+    "Content-Length": String(doc.sizeBytes),
+    "Content-Disposition": contentDisposition(kind, doc.fileName),
+    "Cache-Control": "private, no-store",
+    "X-Content-Type-Options": "nosniff",
+  });
+  return new Response(streamInsurancePdf(c.env.DB, userId), { headers });
+}
+
+async function saveInsurance(c: Context<AppEnv>, actor: User, person: User, mode: "self" | "edit"): Promise<Response> {
+  if (!canManageInsurancePdf(actor, person.id)) return forbidden(c);
+  if (person.deletedAt) return removedPersonResponse(c, person);
+  const body = await c.req.parseBody();
+  const file = body.file;
+  const fail = (message: string, status: 400 | 413) =>
+    personResponse(c, mode, personToForm(mode === "self" ? actor : person), [], person, message, status);
+  if (!(file instanceof File) || file.size === 0) return fail("Choose a PDF file to upload.", 400);
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return fail(`That file is ${formatBytes(file.size)}. The limit is ${formatBytes(MAX_UPLOAD_BYTES)}.`, 413);
+  }
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (!isPdf(bytes)) return fail("That file is not a PDF.", 400);
+  await replaceInsurancePdf(c.env.DB, {
+    userId: person.id,
+    fileName: file.name || "insurance.pdf",
+    bytes,
+    uploadedBy: actor.id,
+  });
+  const next = mode === "self" ? "/account?notice=insurance-saved#insurance" : `/pilots/${person.id}?notice=insurance-saved#insurance`;
+  return c.redirect(next, 303);
 }
 
 async function removalBlock(c: Context<AppEnv>, actor: User, person: User): Promise<{ blockedSelf: boolean; blockedLastAdmin: boolean }> {

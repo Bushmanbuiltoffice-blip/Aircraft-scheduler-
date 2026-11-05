@@ -577,3 +577,9 @@ td.owed { color: #6d4b00; font-weight: 600; }
 .tbx-mark { margin-top: 1rem; display: flex; flex-direction: column; gap: 0.7rem; align-items: flex-start; }
 .copy-status { margin-left: 0.5rem; }
 .tbx-link { font-size: 0.85rem; }
+
+/* Insurance PDF on a person, and oil on the flight log */
+#insurance .stack { margin-top: 0.8rem; }
+.oil-summary { margin: 0.2rem 1rem 1rem; }
+.oil-form { max-width: 28rem; }
+#solo-insurance .btn { margin-top: 0.4rem; }

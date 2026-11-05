@@ -1,6 +1,7 @@
 /** @jsxImportSource hono/jsx */
+import { soloInsuranceMissingMessage } from "./copy";
 import { canMarkPaid } from "./payment";
-import { formatMeter, rateLabel, statusLabel } from "./format";
+import { formatMeter, formatOil, rateLabel, statusLabel } from "./format";
 import { formatDateTime, toDateTimeLocalValue } from "./time";
 import type { FlightLogView, ScheduleEntry } from "./types";
 import { FlightChargeCard, HistoricalDetails } from "./pages_logs";
@@ -22,9 +23,12 @@ export function ReservationPage(props: {
   actionError?: string | null;
   aircraftHobbs?: number | null;
   aircraftTach?: number | null;
+  /** Set only for a solo flight that is still scheduled. Dual flights leave this null. */
+  soloInsurance?: { onFile: boolean; uploadHref: string | null; pilotName: string } | null;
 }) {
   const entry = props.entry;
   const estimateRate = props.instructorRateCents ?? 0;
+  const insuranceBlock = props.soloInsurance && !props.soloInsurance.onFile ? props.soloInsurance : null;
   return (
     <Layout title={entry.tailNumber} user={props.viewer} path={props.path} notice={props.notice} usingDevSecret={props.usingDevSecret}>
       <PageHead title={`${entry.tailNumber} reservation`} lede={`${entry.make} ${entry.model}`}>
@@ -43,6 +47,7 @@ export function ReservationPage(props: {
             <div><dt>Aircraft</dt><dd><a class="tail" href={`/aircraft/${entry.aircraftId}`}>{entry.tailNumber}</a></dd></div>
             <div><dt>Hobbs out / in</dt><dd>{formatMeter(entry.hobbsOut)} / {formatMeter(entry.hobbsIn)}</dd></div>
             <div><dt>Tach out / in (maintenance, not billed)</dt><dd>{formatMeter(entry.tachOut)} / {formatMeter(entry.tachIn)}</dd></div>
+            {props.log ? <div><dt>Oil added</dt><dd>{formatOil(props.log.oilAddedQt)}</dd></div> : null}
             {props.log?.imported ? <HistoricalDetails log={props.log} /> : null}
           </dl>
           {entry.notes ? <p class="notes">{entry.notes}</p> : null}
@@ -59,9 +64,23 @@ export function ReservationPage(props: {
           </aside>
         )}
       </section>
-      {props.canManage && entry.status === "scheduled" ? (
+      {props.canManage && entry.status === "scheduled" && insuranceBlock ? (
+        <section class="card card-pad" id="solo-insurance">
+          <h2>Insurance PDF needed</h2>
+          {props.actionError ? null : (
+            <p class="alert" role="alert">{soloInsuranceMissingMessage(insuranceBlock.pilotName)}</p>
+          )}
+          {insuranceBlock.uploadHref ? (
+            <p><a class="btn" href={insuranceBlock.uploadHref}>Upload insurance PDF</a></p>
+          ) : (
+            <p>Ask {insuranceBlock.pilotName} to upload their insurance PDF from Account.</p>
+          )}
+        </section>
+      ) : null}
+      {props.canManage && entry.status === "scheduled" && !insuranceBlock ? (
         <section class="card card-pad">
           <h2>Check out</h2>
+          {props.soloInsurance?.onFile ? <p class="muted">Insurance PDF is on file.</p> : null}
           <p class="muted">
             Read both meters on the airplane before every flight. The boxes start with the last recorded readings
             {props.aircraftHobbs != null || props.aircraftTach != null
@@ -111,6 +130,11 @@ export function ReservationPage(props: {
               <input name="tach_in" inputmode="decimal" pattern="\d{1,6}(\.\d)?" required placeholder={`at least ${formatMeter(entry.tachOut)}`} />
             </label>
             <small class="wide muted">Read both meters after shutdown. Hours with one decimal. Charges use Hobbs only. Tach is for maintenance tracking (TBX) and never changes the bill.</small>
+            <label>
+              Oil added (quarts)
+              <input name="oil_added_qt" inputmode="decimal" pattern="\d{1,2}(\.\d{1,2})?" placeholder="Blank if not recorded" aria-describedby="oil-hint" />
+            </label>
+            <small id="oil-hint" class="wide muted">Optional. Use 0 if none was added. Leave blank if it was not recorded. Oil does not change the Hobbs bill.</small>
             <p id="checkin-estimate" class="wide estimate">Enter Hobbs in to preview the cost.</p>
             <div class="actions wide">
               <button class="btn" type="submit">Check in and bill</button>

@@ -19,7 +19,14 @@ export const NOTICES: Record<string, string> = {
   "person-removed": "Person removed. Their flight logs were not deleted or changed.",
   "resource-added": "PDF added to Resources.",
   "resource-deleted": "Document removed from Resources.",
+  "insurance-saved": "Insurance PDF saved. It stays on this person's record for later solo flights.",
+  "oil-saved": "Oil added updated. Hobbs, tach, charges, and payment were not changed.",
 };
+
+/** Shown at solo check-out when the pilot has no insurance PDF. Presence of a PDF is the whole requirement. */
+export function soloInsuranceMissingMessage(pilotName: string): string {
+  return `Solo check-out needs ${pilotName}'s insurance PDF on file. Upload that PDF, then check out again.`;
+}
 
 export const STUDENT_SOLO_WARNING = "Students usually fly with an instructor. You can still book this solo.";
 

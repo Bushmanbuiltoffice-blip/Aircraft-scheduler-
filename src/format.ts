@@ -83,9 +83,78 @@ export function paperPaidLabel(input: {
 
 export function formatQuantity(value: number | null | undefined, unit: string): string {
   if (value == null || Number.isNaN(value)) return "—";
+  return `${formatOilAmount(value)} ${unit}`;
+}
+
+/** A 172 oil sump is 8 quarts. Two cases is a sensible ceiling for one flight. */
+export const MAX_OIL_QUARTS = 24;
+
+/**
+ * Blank means not recorded (NULL). 0 means none was added.
+ * Up to two decimal places, from 0 through MAX_OIL_QUARTS.
+ */
+export function parseOilQuarts(input: string): { ok: true; value: number | null } | { ok: false; error: string } {
+  const trimmed = input.trim();
+  if (!trimmed) return { ok: true, value: null };
+  if (!/^\d{1,2}(\.\d{1,2})?$/.test(trimmed)) {
+    return {
+      ok: false,
+      error: "Enter oil in quarts, like 1 or 0.5. Use 0 if none was added. Leave blank if it was not recorded.",
+    };
+  }
+  const value = Number(trimmed);
+  if (!Number.isFinite(value) || value < 0 || value > MAX_OIL_QUARTS) {
+    return { ok: false, error: `Oil added must be from 0 to ${MAX_OIL_QUARTS} quarts.` };
+  }
+  return { ok: true, value: Math.round(value * 100) / 100 };
+}
+
+export function formatOilAmount(value: number): string {
   const rounded = Math.round((value + Number.EPSILON) * 100) / 100;
-  const text = rounded.toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1");
-  return `${text} ${unit}`;
+  return rounded.toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1");
+}
+
+/** NULL is "Not recorded". Zero is an explicit "0 qt" (none added), never a stand-in for unknown. */
+export function formatOil(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return "Not recorded";
+  if (value === 0) return "0 qt";
+  return `${formatOilAmount(value)} qt`;
+}
+
+export function oilInputValue(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return "";
+  return formatOilAmount(value);
+}
+
+export type OilTally = { recordedQt: number; recordedCount: number; missingCount: number };
+
+/** Sums only recorded amounts. Null entries are counted aside and are not treated as zero. */
+export function tallyOil(values: Array<number | null | undefined>): OilTally {
+  let recordedQt = 0;
+  let recordedCount = 0;
+  let missingCount = 0;
+  for (const value of values) {
+    if (value == null || Number.isNaN(value)) missingCount += 1;
+    else {
+      recordedCount += 1;
+      recordedQt += value;
+    }
+  }
+  return {
+    recordedQt: Math.round((recordedQt + Number.EPSILON) * 100) / 100,
+    recordedCount,
+    missingCount,
+  };
+}
+
+export function oilTallyText(tally: OilTally): string {
+  if (tally.recordedCount === 0 && tally.missingCount === 0) return "Oil on this list: no flights.";
+  const missing = `${tally.missingCount} ${tally.missingCount === 1 ? "flight is" : "flights are"} not recorded and not counted as zero`;
+  if (tally.recordedCount === 0) return `Oil on this list: nothing recorded. ${missing}.`;
+  const flights = `${tally.recordedCount} ${tally.recordedCount === 1 ? "flight" : "flights"}`;
+  const recorded = `Oil on this list: ${formatQuantity(tally.recordedQt, "qt")} on ${flights}.`;
+  if (tally.missingCount === 0) return recorded;
+  return `${recorded} ${missing}.`;
 }
 
 export function aircraftTitle(make: string, model: string): string {

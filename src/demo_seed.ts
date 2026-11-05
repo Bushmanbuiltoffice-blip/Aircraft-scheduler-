@@ -31,6 +31,8 @@ export async function buildDemoSeedSql(now = new Date()): Promise<string> {
     "DELETE FROM reservations;",
     "DELETE FROM maintenance_blocks;",
     "DELETE FROM aircraft_checkouts;",
+    "DELETE FROM user_document_chunks;",
+    "DELETE FROM user_documents;",
     "DELETE FROM sessions;",
     "DELETE FROM aircraft;",
     "DELETE FROM users;",

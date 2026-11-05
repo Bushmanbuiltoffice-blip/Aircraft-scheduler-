@@ -879,6 +879,8 @@ export type FlightLogInsert = {
   totalCostCents: number;
   rateBasis: RateBasis;
   createdAt: string;
+  /** Quarts added. Null means not recorded. Zero means none was added. */
+  oilAddedQt: number | null;
 };
 
 export async function checkInReservation(db: D1Database, log: FlightLogInsert): Promise<boolean> {
@@ -896,9 +898,10 @@ export async function checkInReservation(db: D1Database, log: FlightLogInsert): 
            id, reservation_id, pilot_id, instructor_id, aircraft_id,
            hobbs_out, hobbs_in, tach_out, tach_in, flight_hours,
            aircraft_rate_cents, aircraft_cost_cents, instructor_rate_cents,
-           instructor_hours, instructor_cost_cents, total_cost_cents, rate_basis, created_at
+           instructor_hours, instructor_cost_cents, total_cost_cents, rate_basis, created_at,
+           oil_added_qt
          )
-         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
          WHERE EXISTS (SELECT 1 FROM reservations WHERE id = ? AND status = 'checked_in')
            AND NOT EXISTS (SELECT 1 FROM flight_logs WHERE reservation_id = ?)`,
       )
@@ -921,6 +924,7 @@ export async function checkInReservation(db: D1Database, log: FlightLogInsert): 
         log.totalCostCents,
         log.rateBasis,
         log.createdAt,
+        log.oilAddedQt,
         log.reservationId,
         log.reservationId,
       ),
@@ -1131,6 +1135,17 @@ export async function billingByPilot(db: D1Database): Promise<PilotBilling[]> {
     unpaidCents: Number(row.unpaid_cents),
     unpaidFlights: Number(row.unpaid_flights),
   }));
+}
+
+/**
+ * Records oil quarts on an existing flight log. Touches only oil_added_qt.
+ * Null clears it back to not recorded. Does not change meters, costs, or payment.
+ */
+export async function updateFlightLogOil(db: D1Database, id: string, quarts: number | null): Promise<boolean> {
+  const existing = await db.prepare("SELECT id FROM flight_logs WHERE id = ?").bind(id).first<{ id: string }>();
+  if (!existing) return false;
+  await db.prepare("UPDATE flight_logs SET oil_added_qt = ? WHERE id = ?").bind(quarts, id).run();
+  return true;
 }
 
 /** Marks an in-app rental paid or unpaid. Returns false for missing or billed-outside rows. */

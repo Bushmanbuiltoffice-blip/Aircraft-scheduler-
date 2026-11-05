@@ -1,10 +1,12 @@
 /** @jsxImportSource hono/jsx */
+import { formatBytes, MAX_UPLOAD_BYTES } from "./resources";
 import { canMarkPaid } from "./payment";
 import { certificateLabel, centsToDollarInput, formatHours, formatMoney, medicalLabel, roleLabel } from "./format";
 import { formatDate, formatDateTime } from "./time";
 import type { Aircraft, Checkout, FlightLogView, Role, ScheduleEntry, User } from "./types";
 import { Errors, Layout, PageHead, RolePill, type Viewer } from "./ui";
 import { LogTable as Logs } from "./pages_dash";
+import { OilSummary } from "./pages_logs";
 
 export type PersonFormValues = {
   name: string;
@@ -27,12 +29,12 @@ export function PeoplePage(props: {
   path: string;
   notice?: string | null;
   usingDevSecret: boolean;
-  people: Array<User & { medicalState: string; checkoutCount: number; hasLogin?: boolean; inviteExpiresAt?: string | null }>;
+  people: Array<User & { medicalState: string; checkoutCount: number; insuranceOnFile: boolean; hasLogin?: boolean; inviteExpiresAt?: string | null }>;
 }) {
   const admin = props.viewer.role === "admin";
   return (
     <Layout title="People" user={props.viewer} path={props.path} notice={props.notice} usingDevSecret={props.usingDevSecret}>
-      <PageHead title="People" lede="Pilots, students, instructors, and admins. Medical dates and aircraft checkouts live here.">
+      <PageHead title="People" lede="Pilots, students, instructors, and admins. Medical dates, insurance PDFs, and aircraft checkouts live here.">
         {props.viewer.role === "admin" ? <a class="btn" href="/pilots/new">Add person</a> : null}
       </PageHead>
       <div class="table-wrap card">
@@ -43,6 +45,7 @@ export function PeoplePage(props: {
               <th>Role</th>
               <th>Certificate</th>
               <th>Medical</th>
+              <th>Insurance</th>
               <th>Checkouts</th>
               {admin ? <th>Login</th> : null}
               {admin ? <th></th> : null}
@@ -59,6 +62,7 @@ export function PeoplePage(props: {
                     {person.medicalExpiration ? formatDate(person.medicalExpiration) : "Missing"}
                   </span>
                 </td>
+                <td>{person.insuranceOnFile ? "On file" : "No PDF"}</td>
                 <td>{person.checkoutCount}</td>
                 {admin ? (
                   <td>
@@ -115,6 +119,14 @@ export function PersonFormPage(props: {
   icalUrl?: string | null;
   canDelete?: boolean;
   personId?: string;
+  insurance?: {
+    document: { fileName: string; sizeBytes: number; updatedAt: string } | null;
+    canEdit: boolean;
+    uploadAction: string;
+    viewHref: string | null;
+    downloadHref: string | null;
+    error: string | null;
+  } | null;
 }) {
   return (
     <Layout title={props.values.name || "Person"} user={props.viewer} path={props.path} notice={props.notice} usingDevSecret={props.usingDevSecret}>
@@ -200,6 +212,7 @@ export function PersonFormPage(props: {
           {props.canDelete && props.personId ? <a class="btn danger" href={`/pilots/${props.personId}/delete`}>Delete</a> : null}
         </div>
       </form>
+      {props.insurance ? <InsuranceSection insurance={props.insurance} /> : null}
       {props.canEditCheckouts && props.aircraft && props.checkoutAction ? (
         <section class="card card-pad">
           <h2>Aircraft checkouts</h2>
@@ -255,6 +268,7 @@ export function PersonFormPage(props: {
         <section class="card">
           <header class="section-head pad"><h2>Billing</h2></header>
           <Logs logs={props.logs} admin={canMarkPaid(props.viewer.role)} returnTo={props.mode === "self" ? "/account" : `/pilots/${props.personId ?? ""}`} />
+          <OilSummary logs={props.logs} />
           <p class="pad muted">
             {billingSummary(props.logs)}
           </p>
@@ -341,6 +355,56 @@ export function DeletePersonPage(props: {
         )}
       </section>
     </Layout>
+  );
+}
+
+function InsuranceSection(props: {
+  insurance: {
+    document: { fileName: string; sizeBytes: number; updatedAt: string } | null;
+    canEdit: boolean;
+    uploadAction: string;
+    viewHref: string | null;
+    downloadHref: string | null;
+    error: string | null;
+  };
+}) {
+  const doc = props.insurance.document;
+  const canSeeFile = Boolean(doc && props.insurance.viewHref && props.insurance.downloadHref);
+  return (
+    <section class="card card-pad" id="insurance">
+      <h2>Insurance PDF</h2>
+      {props.insurance.error ? <p class="alert" role="alert">{props.insurance.error}</p> : null}
+      {doc ? (
+        <div class="resource-item">
+          <div class="resource-text">
+            <strong>Insurance PDF on file</strong>
+            {canSeeFile ? (
+              <span class="muted">{doc.fileName} · {formatBytes(doc.sizeBytes)} · updated {formatDateTime(doc.updatedAt)}</span>
+            ) : (
+              <span class="muted">The file itself is private to this person and admins.</span>
+            )}
+          </div>
+          {canSeeFile ? (
+            <div class="resource-actions">
+              <a class="btn" href={props.insurance.viewHref ?? ""} target="_blank" rel="noopener">View</a>
+              <a class="btn secondary" href={props.insurance.downloadHref ?? ""}>Download</a>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <p class="muted">No insurance PDF uploaded yet. This stays empty until a real PDF is added.</p>
+      )}
+      {props.insurance.canEdit ? (
+        <form method="post" action={props.insurance.uploadAction} enctype="multipart/form-data" class="stack">
+          <label>
+            {doc ? "Replace PDF" : "Upload PDF"}
+            <input name="file" type="file" accept="application/pdf,.pdf" required />
+          </label>
+          <p class="muted">PDF only, up to {formatBytes(MAX_UPLOAD_BYTES)}. Private to this person and admins. Replacing keeps one file on the record.</p>
+          <button class="btn" type="submit">{doc ? "Replace insurance PDF" : "Upload insurance PDF"}</button>
+        </form>
+      ) : null}
+    </section>
   );
 }
 
