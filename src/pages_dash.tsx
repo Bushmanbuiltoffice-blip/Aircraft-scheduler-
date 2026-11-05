@@ -1,5 +1,5 @@
 /** @jsxImportSource hono/jsx */
-import { BILLED_OUTSIDE_LABEL, formatHours, formatMeter, formatMoney, formatOil, statusLabel } from "./format";
+import { BILLED_OUTSIDE_LABEL, formatFuel, formatHours, formatMeter, formatMoney, formatOil, statusLabel } from "./format";
 import { formatDateTime, formatTime } from "./time";
 import { canMarkPaid, PaymentControl } from "./payment";
 import type { Aircraft, Checkout, FlightLogView, MaintenanceBlock, PilotBilling, ScheduleEntry } from "./types";
@@ -192,6 +192,7 @@ export function LogTable(props: { logs: FlightLogView[]; admin?: boolean; return
             <th>Hobbs</th>
             <th>Hours</th>
             <th>Oil</th>
+            <th>Fuel</th>
             <th>Total</th>
             <th>Payment</th>
           </tr>
@@ -213,6 +214,7 @@ export function LogTable(props: { logs: FlightLogView[]; admin?: boolean; return
                 {log.groundHours != null && log.groundHours > 0 ? <small class="muted">{formatHours(log.groundHours)} ground</small> : null}
               </td>
               <td data-label="Oil">{formatOil(log.oilAddedQt)}</td>
+              <td data-label="Fuel">{formatFuel(log.fuelAddedGal)}</td>
               <td data-label="Total">
                 {log.billingStatus === "external" ? (
                   <>
@@ -228,7 +230,7 @@ export function LogTable(props: { logs: FlightLogView[]; admin?: boolean; return
               </td>
             </tr>
           ))}
-          {props.logs.length === 0 ? <tr><td colspan={9} class="muted">No flights logged yet.</td></tr> : null}
+          {props.logs.length === 0 ? <tr><td colspan={10} class="muted">No flights logged yet.</td></tr> : null}
         </tbody>
       </table>
     </div>

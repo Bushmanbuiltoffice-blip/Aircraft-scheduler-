@@ -1,7 +1,9 @@
 /** @jsxImportSource hono/jsx */
 import { soloInsuranceMissingMessage } from "./copy";
 import { canMarkPaid } from "./payment";
-import { formatMeter, formatOil, rateLabel, statusLabel } from "./format";
+import { formatFuel, formatMeter, formatOil, rateLabel, statusLabel } from "./format";
+import { classifyExpiration, insuranceFlagMessage, type ExpirationSource } from "./policy_expiration";
+import { todayInZone } from "./time";
 import { formatDateTime, toDateTimeLocalValue } from "./time";
 import type { FlightLogView, ScheduleEntry } from "./types";
 import { FlightChargeCard, HistoricalDetails } from "./pages_logs";
@@ -25,6 +27,8 @@ export function ReservationPage(props: {
   aircraftTach?: number | null;
   /** Set only for a solo flight that is still scheduled. Dual flights leave this null. */
   soloInsurance?: { onFile: boolean; uploadHref: string | null; pilotName: string } | null;
+  /** Set when an insurance PDF is on file, for solo and dual. A missing PDF leaves this null. */
+  insuranceFlag?: { pilotName: string; date: string | null; source: ExpirationSource | null } | null;
 }) {
   const entry = props.entry;
   const estimateRate = props.instructorRateCents ?? 0;
@@ -48,6 +52,7 @@ export function ReservationPage(props: {
             <div><dt>Hobbs out / in</dt><dd>{formatMeter(entry.hobbsOut)} / {formatMeter(entry.hobbsIn)}</dd></div>
             <div><dt>Tach out / in (maintenance, not billed)</dt><dd>{formatMeter(entry.tachOut)} / {formatMeter(entry.tachIn)}</dd></div>
             {props.log ? <div><dt>Oil added</dt><dd>{formatOil(props.log.oilAddedQt)}</dd></div> : null}
+            {props.log ? <div><dt>Fuel added</dt><dd>{formatFuel(props.log.fuelAddedGal)}</dd></div> : null}
             {props.log?.imported ? <HistoricalDetails log={props.log} /> : null}
           </dl>
           {entry.notes ? <p class="notes">{entry.notes}</p> : null}
@@ -64,6 +69,7 @@ export function ReservationPage(props: {
           </aside>
         )}
       </section>
+      {props.insuranceFlag ? <InsuranceFlagNotice flag={props.insuranceFlag} /> : null}
       {props.canManage && entry.status === "scheduled" && insuranceBlock ? (
         <section class="card card-pad" id="solo-insurance">
           <h2>Insurance PDF needed</h2>
@@ -134,7 +140,12 @@ export function ReservationPage(props: {
               Oil added (quarts)
               <input name="oil_added_qt" inputmode="decimal" pattern="\d{1,2}(\.\d{1,2})?" placeholder="Blank if not recorded" aria-describedby="oil-hint" />
             </label>
-            <small id="oil-hint" class="wide muted">Optional. Use 0 if none was added. Leave blank if it was not recorded. Oil does not change the Hobbs bill.</small>
+            <label>
+              Fuel added (gallons)
+              <input name="fuel_added_gal" inputmode="decimal" pattern="\d{1,4}(\.\d{1,2})?" placeholder="Blank if not recorded" aria-describedby="fuel-hint" />
+            </label>
+            <small id="oil-hint" class="wide muted">Optional. Use 0 if none was added. Leave blank if it was not recorded. Oil and fuel do not change the Hobbs bill.</small>
+            <small id="fuel-hint" class="wide muted">Fuel is US gallons. Use 0 if none was added. Leave blank if it was not recorded.</small>
             <p id="checkin-estimate" class="wide estimate">Enter Hobbs in to preview the cost.</p>
             <div class="actions wide">
               <button class="btn" type="submit">Check in and bill</button>
@@ -161,6 +172,17 @@ export function ReservationPage(props: {
         </section>
       ) : null}
     </Layout>
+  );
+}
+
+function InsuranceFlagNotice(props: { flag: { pilotName: string; date: string | null; source: ExpirationSource | null } }) {
+  const today = todayInZone();
+  const { flag } = classifyExpiration(props.flag.date, today);
+  const tone = flag === "expired" ? "alert" : flag === "current" ? "muted" : "alert warn";
+  return (
+    <p class={tone} id="insurance-expiration" role={flag === "current" ? "status" : "alert"}>
+      {insuranceFlagMessage({ ...props.flag, today })}
+    </p>
   );
 }
 

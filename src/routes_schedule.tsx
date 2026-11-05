@@ -2,15 +2,16 @@
 import type { Context, Hono } from "hono";
 import { RESOURCE_TONES, buildDayBoard, buildMonthCalendar, buildWeekBoard, type BoardEvent, type BoardResource, type MonthEntry } from "./board";
 import { booksOnlySelf, canBookDespiteEligibility, computeFlightCost, eligibilityAllowsBooking, medicalWaivedByInstructor, meterWarnings, pilotEligibility, soloCheckoutNeedsInsurance, validateReservationWindow } from "./domain";
-import { getInsurancePdf } from "./documents";
+import { ensureInsuranceExpiration } from "./documents";
 import { createEmailSender, reservationMessage, safeSend } from "./email";
-import { formatMoney, parseMeter, parseOilQuarts } from "./format";
+import { formatMoney, parseFuelGallons, parseMeter, parseOilQuarts } from "./format";
 import { buildIcal, type IcalEvent } from "./ical";
 import { STUDENT_SOLO_WARNING, clashMessage, pageNotice, soloInsuranceMissingMessage } from "./copy";
 import {
   billingByPilot,
   setFlightLogPaid,
   updateFlightLogOil,
+  updateFlightLogFuel,
   cancelReservation,
   checkInReservation,
   checkoutReservation,
@@ -248,7 +249,7 @@ export function registerSchedule(app: Hono<AppEnv>): void {
     if (!entry) return c.notFound();
     if (!canManage(user, entry)) return forbidden(c);
     if (soloCheckoutNeedsInsurance(entry.instructorId)) {
-      const insurance = await getInsurancePdf(c.env.DB, entry.pilotId);
+      const insurance = await ensureInsuranceExpiration(c.env.DB, entry.pilotId);
       if (!insurance) return renderReservation(c, entry.id, soloInsuranceMissingMessage(entry.pilotName));
     }
     const data = await readForm(c);
@@ -283,6 +284,8 @@ export function registerSchedule(app: Hono<AppEnv>): void {
     if (hobbsIn == null || tachIn == null) return renderReservation(c, entry.id, "Enter Hobbs and tach in with at most one decimal.");
     const oil = parseOilQuarts(field(data, "oil_added_qt"));
     if (!oil.ok) return renderReservation(c, entry.id, oil.error);
+    const fuel = parseFuelGallons(field(data, "fuel_added_gal"));
+    if (!fuel.ok) return renderReservation(c, entry.id, fuel.error);
     const aircraft = await getAircraft(c.env.DB, entry.aircraftId);
     if (!aircraft) return c.notFound();
     const instructor = entry.instructorId ? await getUserById(c.env.DB, entry.instructorId) : null;
@@ -307,6 +310,7 @@ export function registerSchedule(app: Hono<AppEnv>): void {
       aircraftId: entry.aircraftId,
       ...cost.value,
       oilAddedQt: oil.value,
+      fuelAddedGal: fuel.value,
       createdAt: now,
     });
     if (!saved) return renderReservation(c, entry.id, "Check-in could not be saved. Reload and try again.");
@@ -354,6 +358,19 @@ export function registerSchedule(app: Hono<AppEnv>): void {
     const saved = await updateFlightLogOil(c.env.DB, id, parsed.value);
     if (!saved) return c.notFound();
     return c.redirect(`/logs/${id}?notice=oil-saved`, 303);
+  });
+
+  app.post("/logs/:id/fuel", async (c) => {
+    const user = mustUser(c);
+    if (user.role !== "admin") return forbidden(c);
+    const id = c.req.param("id");
+    const log = await getFlightLog(c.env.DB, id);
+    if (!log) return c.notFound();
+    const parsed = parseFuelGallons(field(await readForm(c), "fuel_added_gal"));
+    if (!parsed.ok) return renderLog(c, id, parsed.error);
+    const saved = await updateFlightLogFuel(c.env.DB, id, parsed.value);
+    if (!saved) return c.notFound();
+    return c.redirect(`/logs/${id}?notice=fuel-saved`, 303);
   });
 
   app.post("/logs/:id/paid", async (c) => {
@@ -511,7 +528,7 @@ async function renderReservation(c: Context<AppEnv>, id: string, actionError: st
     getUserById(c.env.DB, entry.pilotId),
     getCheckout(c.env.DB, entry.pilotId, entry.aircraftId),
     getFlightLogByReservation(c.env.DB, entry.id),
-    needsInsurance ? getInsurancePdf(c.env.DB, entry.pilotId) : Promise.resolve(null),
+    entry.status === "scheduled" ? ensureInsuranceExpiration(c.env.DB, entry.pilotId) : Promise.resolve(null),
   ]);
   const eligibility =
     entry.status === "scheduled" && pilot && aircraft
@@ -560,6 +577,15 @@ async function renderReservation(c: Context<AppEnv>, id: string, actionError: st
                       ? `/pilots/${entry.pilotId}#insurance`
                       : null,
                 pilotName: entry.pilotName,
+              }
+            : null
+        }
+        insuranceFlag={
+          insurance
+            ? {
+                pilotName: entry.pilotName,
+                date: insurance.expirationDate,
+                source: insurance.expirationSource,
               }
             : null
         }

@@ -21,6 +21,9 @@ export const NOTICES: Record<string, string> = {
   "resource-deleted": "Document removed from Resources.",
   "insurance-saved": "Insurance PDF saved. It stays on this person's record for later solo flights.",
   "oil-saved": "Oil added updated. Hobbs, tach, charges, and payment were not changed.",
+  "fuel-saved": "Fuel added updated. Hobbs, tach, charges, and payment were not changed.",
+  "insurance-date-saved": "Insurance expiration date saved. The PDF was not changed.",
+  "insurance-date-read": "Insurance expiration was read from the PDF again.",
 };
 
 /** Shown at solo check-out when the pilot has no insurance PDF. Presence of a PDF is the whole requirement. */

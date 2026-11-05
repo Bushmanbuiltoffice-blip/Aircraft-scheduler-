@@ -210,7 +210,7 @@ describe("Insurance PDF", () => {
     expect(resources).not.toContain("rita-policy.pdf");
     expect(resources).not.toContain("replacement.pdf");
     const people = await (await get("/pilots", adminCookie)).text();
-    expect(people).toContain("On file");
+    expect(people).toContain("Date not confirmed");
     expect(people).toContain("No PDF");
   });
 

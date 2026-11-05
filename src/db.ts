@@ -881,6 +881,8 @@ export type FlightLogInsert = {
   createdAt: string;
   /** Quarts added. Null means not recorded. Zero means none was added. */
   oilAddedQt: number | null;
+  /** US gallons added. Null means not recorded. Zero means none was added. */
+  fuelAddedGal: number | null;
 };
 
 export async function checkInReservation(db: D1Database, log: FlightLogInsert): Promise<boolean> {
@@ -899,9 +901,9 @@ export async function checkInReservation(db: D1Database, log: FlightLogInsert): 
            hobbs_out, hobbs_in, tach_out, tach_in, flight_hours,
            aircraft_rate_cents, aircraft_cost_cents, instructor_rate_cents,
            instructor_hours, instructor_cost_cents, total_cost_cents, rate_basis, created_at,
-           oil_added_qt
+           oil_added_qt, fuel_added_gal
          )
-         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
          WHERE EXISTS (SELECT 1 FROM reservations WHERE id = ? AND status = 'checked_in')
            AND NOT EXISTS (SELECT 1 FROM flight_logs WHERE reservation_id = ?)`,
       )
@@ -925,6 +927,7 @@ export async function checkInReservation(db: D1Database, log: FlightLogInsert): 
         log.rateBasis,
         log.createdAt,
         log.oilAddedQt,
+        log.fuelAddedGal,
         log.reservationId,
         log.reservationId,
       ),
@@ -1145,6 +1148,17 @@ export async function updateFlightLogOil(db: D1Database, id: string, quarts: num
   const existing = await db.prepare("SELECT id FROM flight_logs WHERE id = ?").bind(id).first<{ id: string }>();
   if (!existing) return false;
   await db.prepare("UPDATE flight_logs SET oil_added_qt = ? WHERE id = ?").bind(quarts, id).run();
+  return true;
+}
+
+/**
+ * Records fuel gallons on an existing flight log. Touches only fuel_added_gal.
+ * Null clears it back to not recorded. Does not change meters, costs, payment, or oil.
+ */
+export async function updateFlightLogFuel(db: D1Database, id: string, gallons: number | null): Promise<boolean> {
+  const existing = await db.prepare("SELECT id FROM flight_logs WHERE id = ?").bind(id).first<{ id: string }>();
+  if (!existing) return false;
+  await db.prepare("UPDATE flight_logs SET fuel_added_gal = ? WHERE id = ?").bind(gallons, id).run();
   return true;
 }
 

@@ -1,5 +1,5 @@
 /** @jsxImportSource hono/jsx */
-import { BILLED_OUTSIDE_LABEL, formatHours, formatMeter, formatMoney, formatOil, formatQuantity, oilInputValue, oilTallyText, paperPaidLabel, rateLabel, roleLabel, tallyOil } from "./format";
+import { BILLED_OUTSIDE_LABEL, formatFuel, formatHours, formatMeter, formatMoney, formatOil, fuelInputValue, fuelTallyText, oilInputValue, oilTallyText, paperPaidLabel, rateLabel, roleLabel, tallyFuel, tallyOil } from "./format";
 import { formatDateTime } from "./time";
 import type { FlightLogView, User } from "./types";
 import { LogTable } from "./pages_dash";
@@ -17,7 +17,7 @@ export function LogsPage(props: {
 }) {
   return (
     <Layout title="Flight logs" user={props.viewer} path={props.path} usingDevSecret={props.usingDevSecret}>
-      <PageHead title="Flight logs" lede="Hobbs, tach, fuel, oil, and the amount billed at check-in. Oil left blank stays Not recorded, and 0 means none was added. New rentals start Unpaid until an admin or instructor marks them Paid. A row marked billed outside the app was already paid and is not on a balance." />
+      <PageHead title="Flight logs" lede="Hobbs, tach, fuel, oil, and the amount billed at check-in. Fuel or oil left blank stays Not recorded, and 0 means none was added. New rentals start Unpaid until an admin or instructor marks them Paid. A row marked billed outside the app was already paid and is not on a balance." />
       {props.viewer.role === "admin" ? (
         <form class="toolbar" method="get" action="/logs">
           <label>
@@ -35,6 +35,7 @@ export function LogsPage(props: {
       <section class="card">
         <LogTable logs={props.logs} admin={canMarkPaid(props.viewer.role)} returnTo={props.pilotId ? `/logs?pilot=${encodeURIComponent(props.pilotId)}` : "/logs"} />
         <OilSummary logs={props.logs} />
+        <FuelSummary logs={props.logs} />
       </section>
     </Layout>
   );
@@ -74,6 +75,7 @@ export function LogDetailPage(props: {
           <div><dt>Hobbs</dt><dd>{formatMeter(log.hobbsOut)} → {formatMeter(log.hobbsIn)}</dd></div>
           <div><dt>Tach (maintenance, not billed)</dt><dd>{formatMeter(log.tachOut)} → {formatMeter(log.tachIn)}</dd></div>
           <div><dt>Oil added</dt><dd>{formatOil(log.oilAddedQt)}</dd></div>
+          <div><dt>Fuel added</dt><dd>{formatFuel(log.fuelAddedGal)}</dd></div>
           {log.imported ? <HistoricalDetails log={log} /> : null}
         </dl>
         <FlightChargeCard log={log} admin={canMarkPaid(props.viewer.role)} returnTo={`/logs/${log.id}`} />
@@ -86,8 +88,21 @@ export function LogDetailPage(props: {
               Quarts
               <input name="oil_added_qt" inputmode="decimal" pattern="\d{1,2}(\.\d{1,2})?" value={oilInputValue(log.oilAddedQt)} placeholder="Blank if not recorded" />
             </label>
-            <p class="muted">Use 0 if none was added. Leave blank for Not recorded. Saving oil does not change Hobbs, tach, charges, or payment.</p>
+            <p class="muted">Use 0 if none was added. Leave blank for Not recorded. Saving oil does not change Hobbs, tach, charges, payment, or fuel.</p>
             <button class="btn secondary" type="submit">Save oil</button>
+          </form>
+        </section>
+      ) : null}
+      {canEditOil ? (
+        <section class="card card-pad">
+          <h2>Fuel added</h2>
+          <form method="post" action={`/logs/${log.id}/fuel`} class="stack oil-form">
+            <label>
+              Gallons
+              <input name="fuel_added_gal" inputmode="decimal" pattern="\d{1,4}(\.\d{1,2})?" value={fuelInputValue(log.fuelAddedGal)} placeholder="Blank if not recorded" />
+            </label>
+            <p class="muted">US gallons. Use 0 if none was added. Leave blank for Not recorded. Saving fuel does not change Hobbs, tach, charges, payment, or oil.</p>
+            <button class="btn secondary" type="submit">Save fuel</button>
           </form>
         </section>
       ) : null}
@@ -100,13 +115,17 @@ export function OilSummary(props: { logs: Array<{ oilAddedQt: number | null }> }
   return <p class="oil-summary">{oilTallyText(tallyOil(props.logs.map((log) => log.oilAddedQt)))}</p>;
 }
 
+export function FuelSummary(props: { logs: Array<{ fuelAddedGal: number | null }> }) {
+  if (props.logs.length === 0) return null;
+  return <p class="oil-summary">{fuelTallyText(tallyFuel(props.logs.map((log) => log.fuelAddedGal)))}</p>;
+}
+
 export function HistoricalDetails(props: { log: FlightLogView }) {
   const log = props.log;
   return (
     <>
       <div><dt>Flight type</dt><dd>{log.rentalType ?? "—"}</dd></div>
       <div><dt>Ground</dt><dd>{log.groundHours == null ? "—" : `${formatHours(log.groundHours)} hr`}</dd></div>
-      <div><dt>Fuel added</dt><dd>{formatQuantity(log.fuelAddedGal, "gal")}</dd></div>
       <div><dt>Paper log</dt><dd>{paperPaidLabel(log)}</dd></div>
       {log.billingStatus === "external" ? <div><dt>Billing</dt><dd>{log.billingNote ?? BILLED_OUTSIDE_LABEL}</dd></div> : null}
     </>

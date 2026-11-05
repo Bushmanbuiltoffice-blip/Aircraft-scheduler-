@@ -148,13 +148,79 @@ export function tallyOil(values: Array<number | null | undefined>): OilTally {
 }
 
 export function oilTallyText(tally: OilTally): string {
-  if (tally.recordedCount === 0 && tally.missingCount === 0) return "Oil on this list: no flights.";
-  const missing = `${tally.missingCount} ${tally.missingCount === 1 ? "flight is" : "flights are"} not recorded and not counted as zero`;
-  if (tally.recordedCount === 0) return `Oil on this list: nothing recorded. ${missing}.`;
-  const flights = `${tally.recordedCount} ${tally.recordedCount === 1 ? "flight" : "flights"}`;
-  const recorded = `Oil on this list: ${formatQuantity(tally.recordedQt, "qt")} on ${flights}.`;
-  if (tally.missingCount === 0) return recorded;
-  return `${recorded} ${missing}.`;
+  return quantityTallyText("Oil", "qt", tally.recordedQt, tally.recordedCount, tally.missingCount);
+}
+
+/**
+ * Input format only. A 172C holds about 42 US gallons, so this ceiling is far
+ * above a real fueling and is not a tank-size rule. It rejects values that are
+ * not a gallon quantity.
+ */
+export const MAX_FUEL_GALLONS = 9999.99;
+
+/** Blank means not recorded (NULL). 0 means none was added. Up to two decimal places. */
+export function parseFuelGallons(input: string): { ok: true; value: number | null } | { ok: false; error: string } {
+  const trimmed = input.trim();
+  if (!trimmed) return { ok: true, value: null };
+  if (!/^\d{1,4}(\.\d{1,2})?$/.test(trimmed)) {
+    return {
+      ok: false,
+      error: "Enter fuel in gallons, like 12.5 or 0. Use 0 if none was added. Leave blank if it was not recorded.",
+    };
+  }
+  const value = Number(trimmed);
+  if (!Number.isFinite(value) || value < 0 || value > MAX_FUEL_GALLONS) {
+    return { ok: false, error: `Fuel added must be from 0 to ${MAX_FUEL_GALLONS} gallons.` };
+  }
+  return { ok: true, value: Math.round(value * 100) / 100 };
+}
+
+/** NULL is "Not recorded". Zero is an explicit "0 gal" (none added). */
+export function formatFuel(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return "Not recorded";
+  if (value === 0) return "0 gal";
+  return `${formatOilAmount(value)} gal`;
+}
+
+export function fuelInputValue(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return "";
+  return formatOilAmount(value);
+}
+
+export type FuelTally = { recordedGal: number; recordedCount: number; missingCount: number };
+
+/** Sums only recorded gallons. Null entries are counted aside and are not treated as zero. */
+export function tallyFuel(values: Array<number | null | undefined>): FuelTally {
+  let recordedGal = 0;
+  let recordedCount = 0;
+  let missingCount = 0;
+  for (const value of values) {
+    if (value == null || Number.isNaN(value)) missingCount += 1;
+    else {
+      recordedCount += 1;
+      recordedGal += value;
+    }
+  }
+  return {
+    recordedGal: Math.round((recordedGal + Number.EPSILON) * 100) / 100,
+    recordedCount,
+    missingCount,
+  };
+}
+
+export function fuelTallyText(tally: FuelTally): string {
+  return quantityTallyText("Fuel", "gal", tally.recordedGal, tally.recordedCount, tally.missingCount);
+}
+
+function quantityTallyText(name: string, unit: string, recorded: number, recordedCount: number, missingCount: number): string {
+  if (recordedCount === 0 && missingCount === 0) return `${name} on this list: no flights.`;
+  const missing = `${missingCount} ${missingCount === 1 ? "flight is" : "flights are"} not recorded and not counted as zero`;
+  if (recordedCount === 0) return `${name} on this list: nothing recorded. ${missing}.`;
+  const flights = `${recordedCount} ${recordedCount === 1 ? "flight" : "flights"}`;
+  const amount = formatQuantity(recorded, unit);
+  const line = `${name} on this list: ${amount} on ${flights}.`;
+  if (missingCount === 0) return line;
+  return `${line} ${missing}.`;
 }
 
 export function aircraftTitle(make: string, model: string): string {

@@ -3,7 +3,17 @@ import type { Context, Hono } from "hono";
 import { emailError, hashPassword, newToken, normalizeEmail, passwordError, UNUSABLE_PASSWORD_HASH, verifyPassword } from "./auth";
 import { pageNotice } from "./copy";
 import { inviteLinkResponse } from "./routes_invite";
-import { canManageInsurancePdf, getInsurancePdf, insuranceUserIds, replaceInsurancePdf, streamInsurancePdf } from "./documents";
+import {
+  canManageInsurancePdf,
+  confirmInsuranceExpiration,
+  ensureInsuranceExpiration,
+  ensureUncheckedInsurance,
+  getInsurancePdf,
+  rereadInsuranceExpiration,
+  replaceInsurancePdf,
+  streamInsurancePdf,
+} from "./documents";
+import { insuranceListLabel } from "./policy_expiration";
 import { booksOnlySelf } from "./domain";
 import { contentDisposition, isPdf, MAX_UPLOAD_BYTES, formatBytes } from "./resources";
 import {
@@ -194,10 +204,12 @@ export function registerFleet(app: Hono<AppEnv>): void {
     if (booksOnlySelf(user.role)) return c.redirect("/account");
     const today = todayInZone();
     const people = await listUsers(c.env.DB);
-    const [invites, insuranceIds] = await Promise.all([
-      user.role === "admin" ? pendingInvites(c.env.DB) : Promise.resolve(new Map<string, string>()),
-      insuranceUserIds(c.env.DB),
-    ]);
+    await ensureUncheckedInsurance(c.env.DB);
+    const insuranceRows = await c.env.DB
+      .prepare("SELECT user_id, expiration_date FROM user_documents WHERE kind = 'insurance'")
+      .all<{ user_id: string; expiration_date: string | null }>();
+    const insuranceLabels = new Map(insuranceRows.results.map((row) => [row.user_id, insuranceListLabel(row.expiration_date, today)]));
+    const invites = user.role === "admin" ? await pendingInvites(c.env.DB) : new Map<string, string>();
     const checkoutCounts = new Map<string, number>();
     await Promise.all(
       people.map(async (person) => {
@@ -218,7 +230,7 @@ export function registerFleet(app: Hono<AppEnv>): void {
             checkoutCount: checkoutCounts.get(person.id) ?? 0,
             hasLogin: hasWorkingLogin(person),
             inviteExpiresAt: invites.get(person.id) ?? null,
-            insuranceOnFile: insuranceIds.has(person.id),
+            insuranceLabel: insuranceLabels.get(person.id) ?? "No PDF",
           }))}
         />,
       ),
@@ -338,6 +350,8 @@ export function registerFleet(app: Hono<AppEnv>): void {
     if (!person) return c.notFound();
     return saveInsurance(c, actor, person, "edit");
   });
+  app.post("/pilots/:id/insurance/expiration", async (c) => saveExpiration(c, c.req.param("id"), "edit"));
+  app.post("/pilots/:id/insurance/expiration/reread", async (c) => rereadExpiration(c, c.req.param("id"), "edit"));
 
   app.get("/account/insurance/view", (c) => serveInsurance(c, mustUser(c).id, "inline"));
   app.get("/account/insurance/download", (c) => serveInsurance(c, mustUser(c).id, "attachment"));
@@ -345,6 +359,8 @@ export function registerFleet(app: Hono<AppEnv>): void {
     const user = mustUser(c);
     return saveInsurance(c, user, user, "self");
   });
+  app.post("/account/insurance/expiration", async (c) => saveExpiration(c, mustUser(c).id, "self"));
+  app.post("/account/insurance/expiration/reread", async (c) => rereadExpiration(c, mustUser(c).id, "self"));
 
   app.get("/account", async (c) => {
     const user = mustUser(c);
@@ -457,7 +473,7 @@ async function personResponse(
   const upcoming = person ? await listReservationsForUser(c.env.DB, person.id, new Date(Date.now() - 86_400_000).toISOString()) : [];
   const logs = person && (user.role === "admin" || user.id === person.id) ? await listFlightLogs(c.env.DB, { pilotId: person.id, limit: 20 }) : undefined;
   const icalUrl = mode === "self" ? new URL(`/ical/${user.icalToken}`, c.req.url).toString() : null;
-  const insurance = person && mode !== "create" ? await getInsurancePdf(c.env.DB, person.id) : null;
+  const insurance = person && mode !== "create" ? await ensureInsuranceExpiration(c.env.DB, person.id) : null;
   const canEditInsurance = Boolean(person && mode !== "create" && !person.deletedAt && canManageInsurancePdf(user, person.id));
   const insuranceBase = mode === "self" ? "/account/insurance" : `/pilots/${person?.id}/insurance`;
   return c.html(
@@ -487,12 +503,20 @@ async function personResponse(
           person && mode !== "create"
             ? {
                 document: insurance
-                  ? { fileName: insurance.fileName, sizeBytes: insurance.sizeBytes, updatedAt: insurance.updatedAt }
+                  ? {
+                      fileName: insurance.fileName,
+                      sizeBytes: insurance.sizeBytes,
+                      updatedAt: insurance.updatedAt,
+                      expirationDate: insurance.expirationDate,
+                      expirationSource: insurance.expirationSource,
+                    }
                   : null,
                 canEdit: canEditInsurance,
                 uploadAction: insuranceBase,
                 viewHref: insurance && canEditInsurance ? `${insuranceBase}/view` : null,
                 downloadHref: insurance && canEditInsurance ? `${insuranceBase}/download` : null,
+                expirationAction: `${insuranceBase}/expiration`,
+                rereadAction: `${insuranceBase}/expiration/reread`,
                 error: insuranceError,
               }
             : null
@@ -538,6 +562,35 @@ async function saveInsurance(c: Context<AppEnv>, actor: User, person: User, mode
     uploadedBy: actor.id,
   });
   const next = mode === "self" ? "/account?notice=insurance-saved#insurance" : `/pilots/${person.id}?notice=insurance-saved#insurance`;
+  return c.redirect(next, 303);
+}
+
+async function saveExpiration(c: Context<AppEnv>, userId: string, mode: "self" | "edit"): Promise<Response> {
+  const actor = mustUser(c);
+  if (!isUuid(userId) || !canManageInsurancePdf(actor, userId)) return forbidden(c);
+  const person = await getUserById(c.env.DB, userId);
+  if (!person) return c.notFound();
+  if (!(await getInsurancePdf(c.env.DB, person.id))) {
+    return personResponse(c, mode, personToForm(person), [], person, "Upload an insurance PDF before entering a date.", 400);
+  }
+  const raw = field(await readForm(c), "expiration_date");
+  const date = raw ? parseDay(raw) : null;
+  if (raw && !date) {
+    return personResponse(c, mode, personToForm(person), [], person, "Enter a real expiration date, or leave it blank if it is not confirmed.", 400);
+  }
+  await confirmInsuranceExpiration(c.env.DB, person.id, date);
+  const next = mode === "self" ? "/account?notice=insurance-date-saved#insurance" : `/pilots/${person.id}?notice=insurance-date-saved#insurance`;
+  return c.redirect(next, 303);
+}
+
+async function rereadExpiration(c: Context<AppEnv>, userId: string, mode: "self" | "edit"): Promise<Response> {
+  const actor = mustUser(c);
+  if (!isUuid(userId) || !canManageInsurancePdf(actor, userId)) return forbidden(c);
+  const person = await getUserById(c.env.DB, userId);
+  if (!person) return c.notFound();
+  const read = await rereadInsuranceExpiration(c.env.DB, person.id);
+  if (!read) return c.notFound();
+  const next = mode === "self" ? "/account?notice=insurance-date-read#insurance" : `/pilots/${person.id}?notice=insurance-date-read#insurance`;
   return c.redirect(next, 303);
 }
 
