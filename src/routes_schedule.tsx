@@ -33,7 +33,7 @@ import {
   listFlightLogs,
   listInstructors,
   listMaintenance,
-  listReservationsForUser,
+  listComingUpForParticipant,
   listReservationsOverlapping,
   listUpcoming,
   listUsers,
@@ -80,7 +80,7 @@ export function registerSchedule(app: Hono<AppEnv>): void {
       listReservationsOverlapping(c.env.DB, day.startIso, day.endIso),
       user.role === "admin"
         ? listUpcoming(c.env.DB, day.endIso, 12)
-        : listReservationsForUser(c.env.DB, user.id, day.endIso),
+        : listComingUpForParticipant(c.env.DB, user.id, now.toISOString(), 30),
       listFlightLogs(
         c.env.DB,
         user.role === "admin"
@@ -575,6 +575,7 @@ async function renderReservation(c: Context<AppEnv>, id: string, actionError: st
   if (!isUuid(id)) return c.notFound();
   const entry = await getScheduleEntry(c.env.DB, id);
   if (!entry) return c.notFound();
+  if (!canManage(user, entry)) return forbidden(c);
   const needsInsurance = entry.status === "scheduled" && soloCheckoutNeedsInsurance(entry.instructorId);
   const agreement = entry.status === "scheduled" ? await getAgreement(c.env.DB, entry.pilotId) : null;
   const agreementState = agreementStatus(agreement);

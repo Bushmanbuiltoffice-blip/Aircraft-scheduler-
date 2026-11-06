@@ -601,7 +601,39 @@ export async function listReservationsForUser(db: D1Database, userId: string, st
     )
     .bind(startIso, userId, userId)
     .all<ScheduleRow>();
-  return results.map(mapSchedule);
+  return dedupeSchedule(results);
+}
+
+/**
+ * Personal Coming up list. The assigned pilot and the assigned instructor both match.
+ * Who created the booking is not a filter. Scheduled flights stay until they end.
+ * Checked-out flights stay until check-in, including when the block has already ended.
+ * Cancelled and checked-in rows are left out. One row per reservation, soonest first.
+ */
+export async function listComingUpForParticipant(db: D1Database, userId: string, nowIso: string, limit = 30): Promise<ScheduleEntry[]> {
+  const { results } = await db
+    .prepare(
+      `${RESERVATION_JOIN}
+       WHERE (r.pilot_id = ? OR r.instructor_id = ?)
+         AND r.status IN ('scheduled', 'checked_out')
+         AND (r.status = 'checked_out' OR r.ends_at > ?)
+       ORDER BY r.starts_at, r.id
+       LIMIT ?`,
+    )
+    .bind(userId, userId, nowIso, limit)
+    .all<ScheduleRow>();
+  return dedupeSchedule(results);
+}
+
+function dedupeSchedule(rows: ScheduleRow[]): ScheduleEntry[] {
+  const seen = new Set<string>();
+  const items: ScheduleEntry[] = [];
+  for (const row of rows) {
+    if (seen.has(row.id)) continue;
+    seen.add(row.id);
+    items.push(mapSchedule(row));
+  }
+  return items;
 }
 
 export async function getScheduleEntry(db: D1Database, id: string): Promise<ScheduleEntry | null> {
