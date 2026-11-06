@@ -1,10 +1,15 @@
 /** @jsxImportSource hono/jsx */
+import { formatBytes, MAX_UPLOAD_BYTES } from "./resources";
+import { canMarkPaid } from "./payment";
 import { certificateLabel, centsToDollarInput, formatHours, formatMoney, medicalLabel, roleLabel } from "./format";
-import { formatDate, formatDateTime } from "./time";
+import { formatDate, formatDateTime, todayInZone } from "./time";
 import type { Aircraft, Checkout, FlightLogView, Role, ScheduleEntry, User } from "./types";
 import { Errors, Layout, PageHead, RolePill, type Viewer } from "./ui";
 import { LogTable as Logs } from "./pages_dash";
-
+import { AgreementAccountCard } from "./pages_agreement";
+import type { AgreementRecord, AgreementStatus } from "./agreement";
+import { FuelSummary, OilSummary } from "./pages_logs";
+import { classifyExpiration, insuranceFlagMessage, type ExpirationSource } from "./policy_expiration";
 export type PersonFormValues = {
   name: string;
   email: string;
@@ -26,11 +31,12 @@ export function PeoplePage(props: {
   path: string;
   notice?: string | null;
   usingDevSecret: boolean;
-  people: Array<User & { medicalState: string; checkoutCount: number }>;
+  people: Array<User & { medicalState: string; checkoutCount: number; insuranceLabel: string; agreementLabel: string; hasLogin?: boolean; inviteExpiresAt?: string | null }>;
 }) {
+  const admin = props.viewer.role === "admin";
   return (
     <Layout title="People" user={props.viewer} path={props.path} notice={props.notice} usingDevSecret={props.usingDevSecret}>
-      <PageHead title="People" lede="Pilots, students, instructors, and admins. Medical dates and aircraft checkouts live here.">
+      <PageHead title="People" lede="Pilots, students, instructors, and admins. Medical dates, insurance PDFs, and aircraft checkouts live here.">
         {props.viewer.role === "admin" ? <a class="btn" href="/pilots/new">Add person</a> : null}
       </PageHead>
       <div class="table-wrap card">
@@ -41,8 +47,11 @@ export function PeoplePage(props: {
               <th>Role</th>
               <th>Certificate</th>
               <th>Medical</th>
+              <th>Insurance</th>
+              <th>Agreement</th>
               <th>Checkouts</th>
-              {props.viewer.role === "admin" ? <th></th> : null}
+              {admin ? <th>Login</th> : null}
+              {admin ? <th></th> : null}
             </tr>
           </thead>
           <tbody>
@@ -56,9 +65,33 @@ export function PeoplePage(props: {
                     {person.medicalExpiration ? formatDate(person.medicalExpiration) : "Missing"}
                   </span>
                 </td>
+                <td>{person.insuranceLabel}</td>
+                <td>{person.agreementLabel}</td>
                 <td>{person.checkoutCount}</td>
-                {props.viewer.role === "admin" ? (
-                  <td>{person.id === props.viewer.id ? null : <a href={`/pilots/${person.id}/delete`}>Delete</a>}</td>
+                {admin ? (
+                  <td>
+                    {person.inviteExpiresAt ? (
+                      <span class="pill out">Invited, expires {formatDate(person.inviteExpiresAt)}</span>
+                    ) : person.hasLogin ? (
+                      <span class="pill available">Active login</span>
+                    ) : (
+                      <span class="pill">No login</span>
+                    )}
+                  </td>
+                ) : null}
+                {admin ? (
+                  <td>
+                    {person.id === props.viewer.id ? null : (
+                      <div class="row-actions">
+                      <form method="post" action={`/pilots/${person.id}/invite`} class="inline-form">
+                        <button class={person.hasLogin ? "text-btn" : "btn small"} type="submit">
+                          {person.hasLogin ? "Send reset link" : "Invite"}
+                        </button>
+                      </form>
+                      <a href={`/pilots/${person.id}/delete`}>Delete</a>
+                      </div>
+                    )}
+                  </td>
                 ) : null}
               </tr>
             ))}
@@ -90,6 +123,23 @@ export function PersonFormPage(props: {
   icalUrl?: string | null;
   canDelete?: boolean;
   personId?: string;
+  insurance?: {
+    document: {
+      fileName: string;
+      sizeBytes: number;
+      updatedAt: string;
+      expirationDate: string | null;
+      expirationSource: ExpirationSource | null;
+    } | null;
+    canEdit: boolean;
+    uploadAction: string;
+    viewHref: string | null;
+    downloadHref: string | null;
+    expirationAction: string;
+    rereadAction: string;
+    error: string | null;
+  } | null;
+  agreement?: { status: AgreementStatus; record: AgreementRecord | null; downloadHref: string | null } | null;
 }) {
   return (
     <Layout title={props.values.name || "Person"} user={props.viewer} path={props.path} notice={props.notice} usingDevSecret={props.usingDevSecret}>
@@ -155,9 +205,15 @@ export function PersonFormPage(props: {
               <small>Used when this person is the instructor on a flight. Enter 0 if you do not charge.</small>
             </label>
           ) : null}
-          {props.showPassword ? (
+          {props.mode === "create" ? (
+            <p class="wide muted no-password-note">
+              No password needed. After you save, you get a 7-day, single-use invite link to text or email them. They
+              choose their own password when they open it.
+            </p>
+          ) : null}
+          {props.showPassword && props.mode !== "create" ? (
             <label class="wide">
-              {props.mode === "create" ? "Temporary password" : "New password"}
+              New password
               <input type="text" name="password" value={props.values.password} autocomplete="off" />
               <small>{props.passwordHint}</small>
             </label>
@@ -169,6 +225,8 @@ export function PersonFormPage(props: {
           {props.canDelete && props.personId ? <a class="btn danger" href={`/pilots/${props.personId}/delete`}>Delete</a> : null}
         </div>
       </form>
+      {props.insurance ? <InsuranceSection insurance={props.insurance} /> : null}
+      {props.agreement ? <AgreementAccountCard own={props.mode === "self"} status={props.agreement.status} record={props.agreement.record} downloadHref={props.agreement.downloadHref} /> : null}
       {props.canEditCheckouts && props.aircraft && props.checkoutAction ? (
         <section class="card card-pad">
           <h2>Aircraft checkouts</h2>
@@ -223,7 +281,9 @@ export function PersonFormPage(props: {
       {props.logs ? (
         <section class="card">
           <header class="section-head pad"><h2>Billing</h2></header>
-          <Logs logs={props.logs} />
+          <Logs logs={props.logs} admin={canMarkPaid(props.viewer.role)} returnTo={props.mode === "self" ? "/account" : `/pilots/${props.personId ?? ""}`} />
+          <OilSummary logs={props.logs} />
+          <FuelSummary logs={props.logs} />
           <p class="pad muted">
             {billingSummary(props.logs)}
           </p>
@@ -253,7 +313,7 @@ export function RemovedPersonPage(props: {
       {props.logs.length > 0 ? (
         <section class="card">
           <header class="section-head pad"><h2>Flight logs</h2></header>
-          <Logs logs={props.logs} />
+          <Logs logs={props.logs} admin={canMarkPaid(props.viewer.role)} returnTo={`/pilots/${props.person.id}`} />
         </section>
       ) : null}
     </Layout>
@@ -313,6 +373,87 @@ export function DeletePersonPage(props: {
   );
 }
 
+function InsuranceSection(props: {
+  insurance: {
+    document: {
+      fileName: string;
+      sizeBytes: number;
+      updatedAt: string;
+      expirationDate: string | null;
+      expirationSource: ExpirationSource | null;
+    } | null;
+    canEdit: boolean;
+    uploadAction: string;
+    viewHref: string | null;
+    downloadHref: string | null;
+    expirationAction: string;
+    rereadAction: string;
+    error: string | null;
+  };
+}) {
+  const doc = props.insurance.document;
+  const canSeeFile = Boolean(doc && props.insurance.viewHref && props.insurance.downloadHref);
+  const today = todayInZone();
+  const flag = doc ? classifyExpiration(doc.expirationDate, today) : null;
+  const tone = !flag || flag.flag === "current" ? "muted" : flag.flag === "expired" ? "alert" : "alert warn";
+  return (
+    <section class="card card-pad" id="insurance">
+      <h2>Insurance PDF</h2>
+      {props.insurance.error ? <p class="alert" role="alert">{props.insurance.error}</p> : null}
+      {doc ? (
+        <div class="resource-item">
+          <div class="resource-text">
+            <strong>Insurance PDF on file</strong>
+            {canSeeFile ? (
+              <span class="muted">{doc.fileName} · {formatBytes(doc.sizeBytes)} · updated {formatDateTime(doc.updatedAt)}</span>
+            ) : (
+              <span class="muted">The file itself is private to this person and admins.</span>
+            )}
+            <p class={tone} id="insurance-expiration" role={flag?.flag === "current" ? "status" : "alert"}>
+              {insuranceFlagMessage({ pilotName: "This person", date: doc.expirationDate, source: doc.expirationSource, today })}
+            </p>
+          </div>
+          {canSeeFile ? (
+            <div class="resource-actions">
+              <a class="btn" href={props.insurance.viewHref ?? ""} target="_blank" rel="noopener">View</a>
+              <a class="btn secondary" href={props.insurance.downloadHref ?? ""}>Download</a>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <p class="muted">No insurance PDF uploaded yet. This stays empty until a real PDF is added.</p>
+      )}
+      {doc && props.insurance.canEdit ? (
+        <form method="post" action={props.insurance.expirationAction} class="stack">
+          <label>
+            Expiration date
+            <input type="date" name="expiration_date" value={doc.expirationDate ?? ""} />
+          </label>
+          <p class="muted">Leave blank if the date is not confirmed. Saving this does not change the PDF. Pacific Time keeps the date covered through that day.</p>
+          <div class="actions">
+            <button class="btn secondary" type="submit">Save expiration date</button>
+          </div>
+        </form>
+      ) : null}
+      {doc && props.insurance.canEdit ? (
+        <form method="post" action={props.insurance.rereadAction}>
+          <button class="btn secondary" type="submit">Read the date from the PDF again</button>
+        </form>
+      ) : null}
+      {props.insurance.canEdit ? (
+        <form method="post" action={props.insurance.uploadAction} enctype="multipart/form-data" class="stack">
+          <label>
+            {doc ? "Replace PDF" : "Upload PDF"}
+            <input name="file" type="file" accept="application/pdf,.pdf" required />
+          </label>
+          <p class="muted">PDF only, up to {formatBytes(MAX_UPLOAD_BYTES)}. Private to this person and admins. Replacing the file reads the expiration again and does not keep the previous date.</p>
+          <button class="btn" type="submit">{doc ? "Replace insurance PDF" : "Upload insurance PDF"}</button>
+        </form>
+      ) : null}
+    </section>
+  );
+}
+
 function countPhrase(count: number, singular: string, plural: string): string {
   return `${count} ${count === 1 ? singular : plural}`;
 }
@@ -345,8 +486,10 @@ function billingSummary(logs: FlightLogView[]): string {
   const inApp = logs.filter((log) => log.billingStatus !== "external");
   const outside = logs.length - inApp.length;
   const cents = inApp.reduce((sum, log) => sum + log.totalCostCents, 0);
+  const unpaid = inApp.filter((log) => !log.paid);
+  const owed = unpaid.reduce((sum, log) => sum + log.totalCostCents, 0);
   const hours = logs.reduce((sum, log) => sum + log.flightHours, 0);
-  const billed = `${inApp.length} billed in this app · ${formatHours(hours)} Hobbs hours on the log · ${formatMoney(cents)} on the balance`;
+  const billed = `${inApp.length} billed in this app · ${formatHours(hours)} Hobbs hours on the log · ${formatMoney(cents)} billed · ${formatMoney(cents - owed)} paid · ${formatMoney(owed)} unpaid (${unpaid.length} ${unpaid.length === 1 ? "rental" : "rentals"})`;
   if (outside === 0) return billed;
   const noun = outside === 1 ? "flight stays" : "flights stay";
   return `${billed}. ${outside} historical ${noun} on this list as already paid outside the app.`;

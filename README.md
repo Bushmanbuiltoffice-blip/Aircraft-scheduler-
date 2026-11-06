@@ -15,11 +15,12 @@ You do not need to be a programmer to run this. The steps below are copy-and-pas
 - Keep the fleet: tail number, make and model, wet and dry hourly rates, notes, and whether the airplane is available or grounded.
 - Mark an airplane down for maintenance on a date range. Those hours cannot be booked. Grounding an airplane blocks every new booking until you return it to service.
 - Sign people in with email and a password. Roles are admin, instructor, pilot (stored internally as “renter”), and student.
-- Keep a pilot record: certificate, medical expiration, and which airplanes they are checked out in. An expired or missing medical blocks a booking. A pilot who is not checked out in that airplane is also blocked. Instructors can still book a checkout ride. An admin can override the medical and checkout rules with a checkbox. Nobody can override a maintenance block, a grounded airplane, or a double booking.
+- Keep a pilot record: certificate, medical expiration, and which airplanes they are checked out in. An expired or missing medical blocks a solo booking. A student or pilot with no current medical can still book when an instructor is on the flight; the reservation shows “No current medical, OK with instructor aboard.” Removing the instructor blocks the booking again. A pilot who is not checked out in that airplane is also blocked. Instructors can still book a checkout ride. An admin can override the medical and checkout rules with a checkbox. Nobody can override a maintenance block, a grounded airplane, or a double booking.
 - See the day or the week, with airplanes or instructors down the side, and reservations on the board.
 - Book, change, or cancel a reservation. The same airplane and the same person cannot be on two flights at once.
 - Check a flight out, then check it back in with Hobbs and tach. Firehound Rental stores the flight time and the cost (airplane rate, plus the instructor rate when an instructor is on the flight).
 - See today’s board, what is coming up, airplane status, and a flight-log and billing list for each pilot.
+- Invite people to set their own password. On People, an admin clicks Invite (or Send reset link for someone who already signs in). The page shows a single-use link that expires in 7 days, with Copy, Text, and Email buttons. Nothing is emailed by the server. A new link replaces any older unused one, and using a link signs that person out everywhere else.
 - Subscribe to a private calendar feed from the Account page. Mail is saved in an outbox on the dashboard so a real email service can be plugged in later. Nothing is sent to the internet yet.
 
 ## Run it on your computer

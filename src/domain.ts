@@ -90,19 +90,40 @@ export type Eligibility = {
   warnings: string[];
 };
 
+export const MEDICAL_WITH_INSTRUCTOR_NOTE = "No current medical, OK with instructor aboard.";
+
+/**
+ * A student or renter may fly without a current medical when an instructor is
+ * on the booking. Solo flights still need a current medical.
+ */
+export function medicalWaivedByInstructor(pilotRole: Role, hasInstructor: boolean): boolean {
+  return hasInstructor && booksOnlySelf(pilotRole);
+}
+
+/** Solo check-out needs the pilot's insurance PDF. An assigned instructor makes the flight dual and skips it. */
+export function soloCheckoutNeedsInsurance(instructorId: string | null | undefined): boolean {
+  return !instructorId;
+}
+
 export function pilotEligibility(input: {
   medicalExpiration: string | null;
   checkout: { status: string; expiresOn: string | null } | null;
   today: string;
   aircraftTail: string;
+  /** True when the pilot is a student or renter and an instructor is on the booking. */
+  instructorAboard?: boolean;
 }): Eligibility {
   const blocks: string[] = [];
   const warnings: string[] = [];
-  if (!input.medicalExpiration) {
-    blocks.push("No medical expiration is on file.");
-  } else if (input.medicalExpiration < input.today) {
-    blocks.push(`Medical expired on ${input.medicalExpiration}.`);
-  } else {
+  const medicalProblem = !input.medicalExpiration
+    ? "No medical expiration is on file."
+    : input.medicalExpiration < input.today
+      ? `Medical expired on ${input.medicalExpiration}.`
+      : null;
+  if (medicalProblem) {
+    if (input.instructorAboard) warnings.push(`${MEDICAL_WITH_INSTRUCTOR_NOTE} ${medicalProblem}`);
+    else blocks.push(medicalProblem);
+  } else if (input.medicalExpiration) {
     const days = daysBetween(input.today, input.medicalExpiration);
     if (days <= 30) {
       warnings.push(`Medical expires in ${days} day${days === 1 ? "" : "s"} (${input.medicalExpiration}).`);
@@ -171,4 +192,38 @@ export function validateReservationWindow(startsAt: Date, endsAt: Date, now = ne
   if (span > MAX_MS) return "Reservations cannot be longer than 16 hours.";
   if (endsAt.getTime() < now.getTime() - 60_000) return "That reservation is already over.";
   return null;
+}
+
+/** More than this many hours on one flight (or between the last recorded meter and check-out) gets a warning. */
+export const METER_JUMP_WARN_HOURS = 10;
+
+const meterText = (value: number) => value.toFixed(1);
+
+/**
+ * Soft checks on Hobbs and tach. These never block a check-out or check-in; they only warn,
+ * because a meter can legitimately move (maintenance runs, a swapped meter).
+ */
+export function meterWarnings(input: {
+  stage: "checkout" | "checkin";
+  hobbsFrom: number | null;
+  hobbsTo: number;
+  tachFrom: number | null;
+  tachTo: number;
+}): string[] {
+  const out: string[] = [];
+  const pairs: Array<[string, number | null, number]> = [
+    ["Hobbs", input.hobbsFrom, input.hobbsTo],
+    ["Tach", input.tachFrom, input.tachTo],
+  ];
+  for (const [name, from, to] of pairs) {
+    if (from == null) continue;
+    const delta = Math.round((to - from) * 10) / 10;
+    if (input.stage === "checkout") {
+      if (delta < 0) out.push(`${name} out ${meterText(to)} is lower than the airplane's last recorded ${name.toLowerCase()} ${meterText(from)}. Double-check the meter.`);
+      else if (delta > METER_JUMP_WARN_HOURS) out.push(`${name} out ${meterText(to)} is ${meterText(delta)} hours above the last recorded ${meterText(from)}. Was it flown without being logged here?`);
+    } else if (delta > METER_JUMP_WARN_HOURS) {
+      out.push(`${name} went up ${meterText(delta)} hours on this flight (${meterText(from)} → ${meterText(to)}). Double-check the reading.`);
+    }
+  }
+  return out;
 }

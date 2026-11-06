@@ -262,3 +262,38 @@ export function parseDay(input: string): string | null {
   if (dt.getUTCFullYear() !== year || dt.getUTCMonth() !== month! - 1 || dt.getUTCDate() !== day) return null;
   return input;
 }
+
+/** Current wall-clock hour (0-23) in the zone. */
+export function hourInZone(now = new Date(), timeZone = TIME_ZONE): number {
+  const hour = Number(
+    new Intl.DateTimeFormat("en-US", { timeZone, hour: "2-digit", hourCycle: "h23" }).format(now),
+  );
+  return hour === 24 ? 0 : hour;
+}
+
+/** Adds minutes to a local "YYYY-MM-DDTHH:MM" wall-clock string. */
+export function addMinutesLocal(local: string, minutes: number): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(local);
+  if (!match) throw new Error(`Invalid local time: ${local}`);
+  const dt = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]) + minutes));
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${dt.getUTCFullYear()}-${pad(dt.getUTCMonth() + 1)}-${pad(dt.getUTCDate())}T${pad(dt.getUTCHours())}:${pad(dt.getUTCMinutes())}`;
+}
+
+export const DEFAULT_BOOKING_MINUTES = 120;
+
+/**
+ * Default start for a new reservation on `day`: the requested HH:MM when it is
+ * still ahead, otherwise the next full hour today, otherwise 9:00 AM.
+ */
+export function defaultBookingWindow(day: string, today: string, now: Date, requestedStart?: string | null): { startsAt: string; endsAt: string } {
+  const valid = requestedStart && /^([01]\d|2[0-3]):[0-5]\d$/.test(requestedStart) ? requestedStart : null;
+  let startsAt = `${day}T${valid ?? "09:00"}`;
+  if (day === today) {
+    const nextHour = hourInZone(now) + 1;
+    const next = addMinutesLocal(`${day}T00:00`, nextHour * 60);
+    const requestedHour = valid ? Number(valid.slice(0, 2)) : -1;
+    if (!valid || requestedHour < nextHour) startsAt = next;
+  }
+  return { startsAt, endsAt: addMinutesLocal(startsAt, DEFAULT_BOOKING_MINUTES) };
+}

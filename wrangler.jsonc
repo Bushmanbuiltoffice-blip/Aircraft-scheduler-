@@ -5,7 +5,10 @@
   "compatibility_date": "2026-08-22",
   // The Workers free plan rejects a limits.cpu_ms setting. Leave it unset.
   "assets": {
-    "directory": "./public"
+    "directory": "./public",
+    "binding": "ASSETS",
+    // Documents under /docs are only served through the Worker, which checks the sign-in first.
+    "run_worker_first": ["/docs/*"]
   },
   "rules": [
     {

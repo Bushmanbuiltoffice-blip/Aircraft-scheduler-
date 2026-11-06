@@ -22,6 +22,7 @@ const NAV = [
   { href: "/aircraft", label: "Aircraft" },
   { href: "/pilots", label: "People" },
   { href: "/logs", label: "Flight logs" },
+  { href: "/resources", label: "Resources" },
   { href: "/account", label: "Account" },
 ];
 
@@ -196,6 +197,31 @@ export function SimpleMessage(props: { title: string; message: string }) {
           <h1>{props.title}</h1>
           <p>{props.message}</p>
           <p><a href="/">Back to {ORG_NAME}</a></p>
+        </main>
+      </body>
+    </html>
+  );
+}
+
+export function TryAgainPage(props: { href: string }) {
+  return (
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="robots" content="noindex" />
+        <title>Please try again · {ORG_NAME}</title>
+        <link rel="stylesheet" href="/app.css" />
+      </head>
+      <body>
+        <main class="wrap narrow">
+          <h1>Please try again</h1>
+          <p>
+            For your security, {ORG_NAME} could not confirm that this form came from this site. This can happen when a page
+            was open for a long time or was opened from an email app. Reload the page and submit it again.
+          </p>
+          <p><a class="btn" href={props.href}>Try again</a></p>
+          <p class="muted">If it keeps happening, open {ORG_NAME} in Safari or Chrome directly.</p>
         </main>
       </body>
     </html>

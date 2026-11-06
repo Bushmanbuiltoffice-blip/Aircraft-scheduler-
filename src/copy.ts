@@ -15,8 +15,26 @@ export const NOTICES: Record<string, string> = {
   "account-saved": "Your account is updated.",
   "password-saved": "Password updated.",
   "ical-reset": "Calendar link replaced. Old subscriptions will stop working.",
+  "password-set": "Your password is saved. You are signed in.",
   "person-removed": "Person removed. Their flight logs were not deleted or changed.",
+  "resource-added": "PDF added to Resources.",
+  "resource-deleted": "Document removed from Resources.",
+  "insurance-saved": "Insurance PDF saved. It stays on this person's record for later solo flights.",
+  "oil-saved": "Oil added updated. Hobbs, tach, charges, and payment were not changed.",
+  "fuel-saved": "Fuel added updated. Hobbs, tach, charges, and payment were not changed.",
+  "ground-saved": "Ground instruction saved on the instructor bill. The aircraft Hobbs charge was not changed, and the paid mark was not changed.",
+  "ground-saved-paid": "Ground instruction saved. This flight is already marked paid for the whole rental. That paid mark was not changed. The combined total now includes this ground charge once, and the aircraft Hobbs charge was not changed.",
+  "insurance-date-saved": "Insurance expiration date saved. The PDF was not changed.",
+  "insurance-date-read": "Insurance expiration was read from the PDF again.",
+  "agreement-signed": "Rental agreement signed and saved.",
+  "agreement-guardian": "Your signature is saved. The agreement is not complete until a parent or legal guardian signs separately.",
+  "agreement-already-signed": "This agreement was already signed. The saved signature was not changed.",
 };
+
+/** Shown at solo check-out when the pilot has no insurance PDF. Presence of a PDF is the whole requirement. */
+export function soloInsuranceMissingMessage(pilotName: string): string {
+  return `Solo check-out needs ${pilotName}'s insurance PDF on file. Upload that PDF, then check out again.`;
+}
 
 export const STUDENT_SOLO_WARNING = "Students usually fly with an instructor. You can still book this solo.";
 

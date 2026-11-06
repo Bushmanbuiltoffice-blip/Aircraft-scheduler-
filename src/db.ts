@@ -252,6 +252,7 @@ export async function removePerson(db: D1Database, personId: string, nowIso: str
   await db.batch([
     db.prepare("UPDATE users SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL").bind(nowIso, personId),
     db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(personId),
+    db.prepare("UPDATE invites SET revoked_at = ? WHERE user_id = ? AND used_at IS NULL AND revoked_at IS NULL").bind(nowIso, personId),
     db
       .prepare(
         `UPDATE reservations
@@ -600,7 +601,39 @@ export async function listReservationsForUser(db: D1Database, userId: string, st
     )
     .bind(startIso, userId, userId)
     .all<ScheduleRow>();
-  return results.map(mapSchedule);
+  return dedupeSchedule(results);
+}
+
+/**
+ * Personal Coming up list. The assigned pilot and the assigned instructor both match.
+ * Who created the booking is not a filter. Scheduled flights stay until they end.
+ * Checked-out flights stay until check-in, including when the block has already ended.
+ * Cancelled and checked-in rows are left out. One row per reservation, soonest first.
+ */
+export async function listComingUpForParticipant(db: D1Database, userId: string, nowIso: string, limit = 30): Promise<ScheduleEntry[]> {
+  const { results } = await db
+    .prepare(
+      `${RESERVATION_JOIN}
+       WHERE (r.pilot_id = ? OR r.instructor_id = ?)
+         AND r.status IN ('scheduled', 'checked_out')
+         AND (r.status = 'checked_out' OR r.ends_at > ?)
+       ORDER BY r.starts_at, r.id
+       LIMIT ?`,
+    )
+    .bind(userId, userId, nowIso, limit)
+    .all<ScheduleRow>();
+  return dedupeSchedule(results);
+}
+
+function dedupeSchedule(rows: ScheduleRow[]): ScheduleEntry[] {
+  const seen = new Set<string>();
+  const items: ScheduleEntry[] = [];
+  for (const row of rows) {
+    if (seen.has(row.id)) continue;
+    seen.add(row.id);
+    items.push(mapSchedule(row));
+  }
+  return items;
 }
 
 export async function getScheduleEntry(db: D1Database, id: string): Promise<ScheduleEntry | null> {
@@ -878,6 +911,14 @@ export type FlightLogInsert = {
   totalCostCents: number;
   rateBasis: RateBasis;
   createdAt: string;
+  /** Quarts added. Null means not recorded. Zero means none was added. */
+  oilAddedQt: number | null;
+  /** US gallons added. Null means not recorded. Zero means none was added. */
+  fuelAddedGal: number | null;
+  /** Null on a solo flight. On a new dual flight, 0 means no ground instruction. */
+  groundHours: number | null;
+  groundRateCents: number | null;
+  groundCostCents: number | null;
 };
 
 export async function checkInReservation(db: D1Database, log: FlightLogInsert): Promise<boolean> {
@@ -895,9 +936,10 @@ export async function checkInReservation(db: D1Database, log: FlightLogInsert): 
            id, reservation_id, pilot_id, instructor_id, aircraft_id,
            hobbs_out, hobbs_in, tach_out, tach_in, flight_hours,
            aircraft_rate_cents, aircraft_cost_cents, instructor_rate_cents,
-           instructor_hours, instructor_cost_cents, total_cost_cents, rate_basis, created_at
+           instructor_hours, instructor_cost_cents, total_cost_cents, rate_basis, created_at,
+           oil_added_qt, fuel_added_gal, ground_hours, ground_rate_cents, ground_cost_cents
          )
-         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
          WHERE EXISTS (SELECT 1 FROM reservations WHERE id = ? AND status = 'checked_in')
            AND NOT EXISTS (SELECT 1 FROM flight_logs WHERE reservation_id = ?)`,
       )
@@ -920,6 +962,11 @@ export async function checkInReservation(db: D1Database, log: FlightLogInsert): 
         log.totalCostCents,
         log.rateBasis,
         log.createdAt,
+        log.oilAddedQt,
+        log.fuelAddedGal,
+        log.groundHours,
+        log.groundRateCents,
+        log.groundCostCents,
         log.reservationId,
         log.reservationId,
       ),
@@ -939,9 +986,10 @@ const FLIGHT_LOG_SELECT = `
   f.hobbs_out, f.hobbs_in, f.tach_out, f.tach_in, f.flight_hours,
   f.aircraft_rate_cents, f.aircraft_cost_cents, f.instructor_rate_cents,
   f.instructor_hours, f.instructor_cost_cents, f.total_cost_cents, f.rate_basis, f.created_at,
-  f.ground_hours, f.aircraft_paid, f.instructor_paid, f.maintenance_flight,
+  f.ground_hours, f.ground_rate_cents, f.ground_cost_cents, f.aircraft_paid, f.instructor_paid, f.maintenance_flight,
   f.fuel_added_gal, f.oil_added_qt, f.rental_type, f.imported,
   f.instructor_name AS guest_instructor_name, f.billing_status, f.billing_note,
+  f.paid, f.paid_at, f.paid_by, (SELECT name FROM users WHERE id = f.paid_by) AS paid_by_name,
   p.name AS pilot_name, p.role AS pilot_role, i.name AS linked_instructor_name, a.tail_number, a.make, a.model
 `;
 
@@ -977,10 +1025,18 @@ export async function getFlightLog(db: D1Database, id: string): Promise<FlightLo
 
 export async function listFlightLogs(
   db: D1Database,
-  filter: { pilotId?: string | null; instructorOrPilotId?: string | null; limit?: number },
+  filter: { pilotId?: string | null; instructorOrPilotId?: string | null; aircraftId?: string | null; sinceIso?: string | null; limit?: number },
 ): Promise<FlightLogView[]> {
   const clauses: string[] = [];
   const binds: string[] = [];
+  if (filter.aircraftId) {
+    clauses.push("f.aircraft_id = ?");
+    binds.push(filter.aircraftId);
+  }
+  if (filter.sinceIso) {
+    clauses.push("f.created_at > ?");
+    binds.push(filter.sinceIso);
+  }
   if (filter.pilotId) {
     clauses.push("f.pilot_id = ?");
     binds.push(filter.pilotId);
@@ -1026,6 +1082,8 @@ type FlightLogRow = {
   rate_basis: RateBasis;
   created_at: string;
   ground_hours: number | null;
+  ground_rate_cents: number | null;
+  ground_cost_cents: number | null;
   aircraft_paid: number;
   instructor_paid: number;
   maintenance_flight: number;
@@ -1036,6 +1094,10 @@ type FlightLogRow = {
   guest_instructor_name: string | null;
   billing_status: string;
   billing_note: string | null;
+  paid: number | null;
+  paid_at: string | null;
+  paid_by: string | null;
+  paid_by_name: string | null;
   pilot_name: string;
   pilot_role: Role;
   linked_instructor_name: string | null;
@@ -1067,6 +1129,8 @@ function mapFlightLog(row: FlightLogRow): FlightLogView {
     rateBasis: row.rate_basis,
     createdAt: row.created_at,
     groundHours: row.ground_hours,
+    groundRateCents: row.ground_rate_cents,
+    groundCostCents: row.ground_cost_cents,
     aircraftPaid: row.aircraft_paid === 1,
     instructorPaid: row.instructor_paid === 1,
     maintenanceFlight: row.maintenance_flight === 1,
@@ -1077,6 +1141,10 @@ function mapFlightLog(row: FlightLogRow): FlightLogView {
     guestInstructorName,
     billingStatus,
     billingNote: row.billing_note,
+    paid: billingStatus === "in_app" && row.paid === 1,
+    paidAt: row.paid_at,
+    paidBy: row.paid_by,
+    paidByName: row.paid_by_name,
     pilotName: row.pilot_name,
     pilotRole: row.pilot_role,
     instructorName: row.linked_instructor_name ?? guestInstructorName,
@@ -1092,21 +1160,93 @@ export async function billingByPilot(db: D1Database): Promise<PilotBilling[]> {
       `SELECT u.id, u.name,
               COUNT(f.id) AS flights,
               COALESCE(SUM(f.flight_hours), 0) AS hours,
-              COALESCE(SUM(f.total_cost_cents), 0) AS total_cents
+              COALESCE(SUM(f.total_cost_cents), 0) AS total_cents,
+              COALESCE(SUM(CASE WHEN f.paid = 1 THEN f.total_cost_cents ELSE 0 END), 0) AS paid_cents,
+              COALESCE(SUM(CASE WHEN f.paid = 1 THEN 0 ELSE f.total_cost_cents END), 0) AS unpaid_cents,
+              COALESCE(SUM(CASE WHEN f.paid = 1 THEN 0 ELSE 1 END), 0) AS unpaid_flights
        FROM users u
        JOIN flight_logs f ON f.pilot_id = u.id AND f.billing_status != 'external'
        WHERE u.deleted_at IS NULL
        GROUP BY u.id
-       ORDER BY total_cents DESC, u.name`,
+       ORDER BY unpaid_cents DESC, total_cents DESC, u.name`,
     )
-    .all<{ id: string; name: string; flights: number; hours: number; total_cents: number }>();
+    .all<{ id: string; name: string; flights: number; hours: number; total_cents: number; paid_cents: number; unpaid_cents: number; unpaid_flights: number }>();
   return results.map((row) => ({
     id: row.id,
     name: row.name,
     flights: Number(row.flights),
     hours: Number(row.hours),
     totalCents: Number(row.total_cents),
+    paidCents: Number(row.paid_cents),
+    unpaidCents: Number(row.unpaid_cents),
+    unpaidFlights: Number(row.unpaid_flights),
   }));
+}
+
+/**
+ * Records oil quarts on an existing flight log. Touches only oil_added_qt.
+ * Null clears it back to not recorded. Does not change meters, costs, or payment.
+ */
+export async function updateFlightLogOil(db: D1Database, id: string, quarts: number | null): Promise<boolean> {
+  const existing = await db.prepare("SELECT id FROM flight_logs WHERE id = ?").bind(id).first<{ id: string }>();
+  if (!existing) return false;
+  await db.prepare("UPDATE flight_logs SET oil_added_qt = ? WHERE id = ?").bind(quarts, id).run();
+  return true;
+}
+
+/**
+ * Records ground instruction on an in-app flight that has an instructor.
+ * Writes ground hours, the flight's saved instructor rate, the ground amount, and the combined total.
+ * Does not change Hobbs, aircraft charge, flight-instruction charge, or the paid mark.
+ */
+export async function updateFlightLogGround(
+  db: D1Database,
+  input: { id: string; hours: number; rateCents: number; costCents: number },
+): Promise<boolean> {
+  const result = await db
+    .prepare(
+      `UPDATE flight_logs
+       SET ground_hours = ?, ground_rate_cents = ?, ground_cost_cents = ?,
+           total_cost_cents = aircraft_cost_cents + instructor_cost_cents + ?
+       WHERE id = ? AND billing_status != 'external' AND instructor_id IS NOT NULL`,
+    )
+    .bind(input.hours, input.rateCents, input.costCents, input.costCents, input.id)
+    .run();
+  return (result.meta.changes ?? 0) > 0;
+}
+
+/**
+ * Records fuel gallons on an existing flight log. Touches only fuel_added_gal.
+ * Null clears it back to not recorded. Does not change meters, costs, payment, or oil.
+ */
+export async function updateFlightLogFuel(db: D1Database, id: string, gallons: number | null): Promise<boolean> {
+  const existing = await db.prepare("SELECT id FROM flight_logs WHERE id = ?").bind(id).first<{ id: string }>();
+  if (!existing) return false;
+  await db.prepare("UPDATE flight_logs SET fuel_added_gal = ? WHERE id = ?").bind(gallons, id).run();
+  return true;
+}
+
+/** Marks an in-app rental paid or unpaid. Returns false for missing or billed-outside rows. */
+export async function setFlightLogPaid(db: D1Database, input: { id: string; paid: boolean; by: string }): Promise<boolean> {
+  const result = await db
+    .prepare(
+      `UPDATE flight_logs SET paid = ?, paid_at = ?, paid_by = ?
+       WHERE id = ? AND billing_status != 'external'`,
+    )
+    .bind(input.paid ? 1 : 0, input.paid ? new Date().toISOString() : null, input.paid ? input.by : null, input.id)
+    .run();
+  return (result.meta.changes ?? 0) > 0;
+}
+
+/** Everything still owed on in-app rentals. */
+export async function outstandingTotal(db: D1Database): Promise<{ cents: number; flights: number }> {
+  const row = await db
+    .prepare(
+      `SELECT COALESCE(SUM(total_cost_cents), 0) AS cents, COUNT(*) AS flights
+       FROM flight_logs WHERE billing_status != 'external' AND paid = 0`,
+    )
+    .first<{ cents: number; flights: number }>();
+  return { cents: Number(row?.cents ?? 0), flights: Number(row?.flights ?? 0) };
 }
 
 /** Hobbs hours include every logged flight. The flight count and cents are in-app charges only. */
@@ -1146,4 +1286,33 @@ export async function listOutbox(db: D1Database, limit = 8): Promise<OutboxRow[]
 
 export function isUniqueError(error: unknown): boolean {
   return error instanceof Error && /UNIQUE/i.test(error.message);
+}
+
+export type TbxEntry = { id: string; aircraftId: string; hobbs: number; tach: number; enteredBy: string | null; enteredByName: string | null; enteredAt: string };
+
+export async function listTbxEntries(db: D1Database, aircraftId: string, limit = 10): Promise<TbxEntry[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT t.id, t.aircraft_id, t.hobbs, t.tach, t.entered_by, t.entered_at, u.name AS entered_by_name
+       FROM tbx_entries t LEFT JOIN users u ON u.id = t.entered_by
+       WHERE t.aircraft_id = ? ORDER BY t.entered_at DESC LIMIT ?`,
+    )
+    .bind(aircraftId, limit)
+    .all<{ id: string; aircraft_id: string; hobbs: number; tach: number; entered_by: string | null; entered_at: string; entered_by_name: string | null }>();
+  return results.map((row) => ({
+    id: row.id,
+    aircraftId: row.aircraft_id,
+    hobbs: row.hobbs,
+    tach: row.tach,
+    enteredBy: row.entered_by,
+    enteredByName: row.entered_by_name,
+    enteredAt: row.entered_at,
+  }));
+}
+
+export async function insertTbxEntry(db: D1Database, input: { aircraftId: string; hobbs: number; tach: number; enteredBy: string }): Promise<void> {
+  await db
+    .prepare("INSERT INTO tbx_entries (id, aircraft_id, hobbs, tach, entered_by, entered_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .bind(crypto.randomUUID(), input.aircraftId, input.hobbs, input.tach, input.enteredBy, new Date().toISOString())
+    .run();
 }
