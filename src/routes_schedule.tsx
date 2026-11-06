@@ -3,6 +3,8 @@ import type { Context, Hono } from "hono";
 import { RESOURCE_TONES, buildDayBoard, buildMonthCalendar, buildWeekBoard, type BoardEvent, type BoardResource, type MonthEntry } from "./board";
 import { booksOnlySelf, canBookDespiteEligibility, computeFlightCost, eligibilityAllowsBooking, medicalWaivedByInstructor, meterWarnings, pilotEligibility, soloCheckoutNeedsInsurance, validateReservationWindow } from "./domain";
 import { agreementAllowsCheckout, agreementCheckoutMessage, agreementStatus, getAgreement } from "./agreement";
+import { canAdjustGround, canPrintAircraftBill, canPrintInstructorBill, externalBillReason, groundInstructionCents, instructorBillBlockedReason, parseGroundHours } from "./bills";
+import { AircraftBillPage, InstructorBillPage, NoBillPage } from "./pages_bills";
 import { ensureInsuranceExpiration } from "./documents";
 import { createEmailSender, reservationMessage, safeSend } from "./email";
 import { formatMoney, parseFuelGallons, parseMeter, parseOilQuarts } from "./format";
@@ -13,6 +15,7 @@ import {
   setFlightLogPaid,
   updateFlightLogOil,
   updateFlightLogFuel,
+  updateFlightLogGround,
   cancelReservation,
   checkInReservation,
   checkoutReservation,
@@ -291,6 +294,11 @@ export function registerSchedule(app: Hono<AppEnv>): void {
     if (!oil.ok) return renderReservation(c, entry.id, oil.error);
     const fuel = parseFuelGallons(field(data, "fuel_added_gal"));
     if (!fuel.ok) return renderReservation(c, entry.id, fuel.error);
+    const groundParsed = parseGroundHours(field(data, "ground_hours"));
+    if (!groundParsed.ok) return renderReservation(c, entry.id, groundParsed.error);
+    if (!entry.instructorId && groundParsed.value != null) {
+      return renderReservation(c, entry.id, "Ground instruction is only for a flight with an instructor.");
+    }
     const aircraft = await getAircraft(c.env.DB, entry.aircraftId);
     if (!aircraft) return c.notFound();
     const instructor = entry.instructorId ? await getUserById(c.env.DB, entry.instructorId) : null;
@@ -305,6 +313,9 @@ export function registerSchedule(app: Hono<AppEnv>): void {
       instructorRateCents: instructor ? instructor.instructorRateCents ?? 0 : null,
     });
     if (!cost.ok) return renderReservation(c, entry.id, cost.error);
+    const groundHours = entry.instructorId ? (groundParsed.value ?? 0) : null;
+    const groundRateCents = groundHours == null ? null : cost.value.instructorRateCents;
+    const groundCostCents = groundHours == null || groundRateCents == null ? null : groundInstructionCents(groundHours, groundRateCents);
     const now = new Date().toISOString();
     const logId = crypto.randomUUID();
     const saved = await checkInReservation(c.env.DB, {
@@ -314,13 +325,21 @@ export function registerSchedule(app: Hono<AppEnv>): void {
       instructorId: entry.instructorId,
       aircraftId: entry.aircraftId,
       ...cost.value,
+      totalCostCents: cost.value.totalCostCents + (groundCostCents ?? 0),
       oilAddedQt: oil.value,
       fuelAddedGal: fuel.value,
+      groundHours,
+      groundRateCents,
+      groundCostCents,
       createdAt: now,
     });
     if (!saved) return renderReservation(c, entry.id, "Check-in could not be saved. Reload and try again.");
     const fresh = await getScheduleEntry(c.env.DB, entry.id);
-    if (fresh) await notify(c.env.DB, fresh, "checked_in", formatMoney(cost.value.totalCostCents));
+    const hobbsTotal = formatMoney(cost.value.totalCostCents);
+    const combinedTotal = formatMoney(cost.value.totalCostCents + (groundCostCents ?? 0));
+    if (fresh) {
+      await notify(c.env.DB, fresh, "checked_in", hobbsTotal, groundCostCents ? { ground: formatMoney(groundCostCents), combined: combinedTotal } : undefined);
+    }
     return c.redirect(`/logs/${logId}?notice=checked-in`, 303);
   });
 
@@ -352,6 +371,9 @@ export function registerSchedule(app: Hono<AppEnv>): void {
 
   app.get("/logs/:id", async (c) => renderLog(c, c.req.param("id"), null));
 
+  app.get("/logs/:id/bill/aircraft", async (c) => renderAircraftBill(c, c.req.param("id")));
+  app.get("/logs/:id/bill/instructor", async (c) => renderInstructorBill(c, c.req.param("id")));
+
   app.post("/logs/:id/oil", async (c) => {
     const user = mustUser(c);
     if (user.role !== "admin") return forbidden(c);
@@ -376,6 +398,32 @@ export function registerSchedule(app: Hono<AppEnv>): void {
     const saved = await updateFlightLogFuel(c.env.DB, id, parsed.value);
     if (!saved) return c.notFound();
     return c.redirect(`/logs/${id}?notice=fuel-saved`, 303);
+  });
+
+  app.post("/logs/:id/ground", async (c) => {
+    const user = mustUser(c);
+    const id = c.req.param("id");
+    const log = await getFlightLog(c.env.DB, id);
+    if (!log) return c.notFound();
+    if (!canReadLog(user, log)) return forbidden(c);
+    if (user.role !== "admin" && user.role !== "instructor") return forbidden(c);
+    if (!canAdjustGround(user, log)) {
+      return renderLog(c, id, log.billingStatus === "external"
+        ? "This historical flight was billed outside the app. Ground instruction is not added to a new bill."
+        : "Ground instruction can be recorded only on a flight with an instructor.");
+    }
+    const parsed = parseGroundHours(field(await readForm(c), "ground_hours"));
+    if (!parsed.ok) return renderLog(c, id, parsed.error);
+    if (parsed.value == null) return renderLog(c, id, "Enter ground instruction hours, or 0 if none was given.");
+    const saved = await updateFlightLogGround(c.env.DB, {
+      id,
+      hours: parsed.value,
+      rateCents: log.instructorRateCents,
+      costCents: groundInstructionCents(parsed.value, log.instructorRateCents),
+    });
+    if (!saved) return renderLog(c, id, "Ground instruction was not saved.");
+    const notice = log.paid ? "ground-saved-paid" : "ground-saved";
+    return c.redirect(`/logs/${id}?notice=${notice}`, 303);
   });
 
   app.post("/logs/:id/paid", async (c) => {
@@ -611,6 +659,48 @@ async function renderReservation(c: Context<AppEnv>, id: string, actionError: st
   );
 }
 
+function canReadLog(user: User, log: { pilotId: string; instructorId: string | null }): boolean {
+  return user.role === "admin" || log.pilotId === user.id || log.instructorId === user.id;
+}
+
+async function privateHtml(body: Response | Promise<Response>): Promise<Response> {
+  const response = await body;
+  response.headers.set("Cache-Control", "private, no-store");
+  return response;
+}
+
+async function renderAircraftBill(c: Context<AppEnv>, id: string): Promise<Response> {
+  const user = mustUser(c);
+  const log = await getFlightLog(c.env.DB, id);
+  if (!log) return c.notFound();
+  if (!canReadLog(user, log)) return forbidden(c);
+  const blocked = externalBillReason(log);
+  if (blocked || !canPrintAircraftBill(log)) {
+    return privateHtml(c.html(document(
+      <NoBillPage viewer={viewerOf(user)} usingDevSecret={c.get("usingDevSecret")} title="No aircraft bill" reason={blocked ?? "No aircraft bill."} />,
+    )));
+  }
+  return privateHtml(c.html(document(
+    <AircraftBillPage viewer={viewerOf(user)} usingDevSecret={c.get("usingDevSecret")} log={log} />,
+  )));
+}
+
+async function renderInstructorBill(c: Context<AppEnv>, id: string): Promise<Response> {
+  const user = mustUser(c);
+  const log = await getFlightLog(c.env.DB, id);
+  if (!log) return c.notFound();
+  if (!canReadLog(user, log)) return forbidden(c);
+  const blocked = instructorBillBlockedReason(log);
+  if (blocked || !canPrintInstructorBill(log)) {
+    return privateHtml(c.html(document(
+      <NoBillPage viewer={viewerOf(user)} usingDevSecret={c.get("usingDevSecret")} title="No instructor bill" reason={blocked ?? "No instructor bill."} />,
+    )));
+  }
+  return privateHtml(c.html(document(
+    <InstructorBillPage viewer={viewerOf(user)} usingDevSecret={c.get("usingDevSecret")} log={log} />,
+  )));
+}
+
 async function renderLog(c: Context<AppEnv>, id: string, error: string | null): Promise<Response> {
   const user = mustUser(c);
   const log = await getFlightLog(c.env.DB, id);
@@ -744,7 +834,13 @@ async function saveBooking(c: Context<AppEnv>, existingId: string | null): Promi
   return c.redirect(`/reservations/${id}?notice=${existing ? "updated" : "booked"}`, 303);
 }
 
-async function notify(db: D1Database, entry: ScheduleEntry, kind: "booked" | "updated" | "cancelled" | "checked_in", total?: string): Promise<void> {
+async function notify(
+  db: D1Database,
+  entry: ScheduleEntry,
+  kind: "booked" | "updated" | "cancelled" | "checked_in",
+  total?: string,
+  extra?: { ground?: string; combined?: string },
+): Promise<void> {
   const sender = createEmailSender(db);
   const when = `${formatDateTime(entry.startsAt)}–${formatTime(entry.endsAt)}`;
   const recipients: Array<{ email: string; name: string }> = [];
@@ -763,6 +859,8 @@ async function notify(db: D1Database, entry: ScheduleEntry, kind: "booked" | "up
       instructorName: entry.instructorName,
       kind,
       total,
+      ground: extra?.ground,
+      combined: extra?.combined,
     });
     await safeSend(sender, { ...message, to: recipient.email });
   }

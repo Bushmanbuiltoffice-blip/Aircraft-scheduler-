@@ -1,8 +1,9 @@
 /** @jsxImportSource hono/jsx */
-import { BILLED_OUTSIDE_LABEL, formatFuel, formatHours, formatMeter, formatMoney, formatOil, statusLabel } from "./format";
+import { BILLED_OUTSIDE_LABEL, formatFuel, formatGroundHours, formatHours, formatMeter, formatMoney, formatOil, statusLabel } from "./format";
 import { formatDateTime, formatTime } from "./time";
 import { canMarkPaid, PaymentControl } from "./payment";
 import type { Aircraft, Checkout, FlightLogView, MaintenanceBlock, PilotBilling, ScheduleEntry } from "./types";
+import { BillLinks } from "./pages_bills";
 import { Layout, PageHead, RolePill, type Viewer } from "./ui";
 
 /** The dashboard shows only the most recent flights; /logs has the full list. */
@@ -211,7 +212,7 @@ export function LogTable(props: { logs: FlightLogView[]; admin?: boolean; return
               <td data-label="Hobbs">{formatMeter(log.hobbsOut)}–{formatMeter(log.hobbsIn)}</td>
               <td data-label="Hours">
                 {formatHours(log.flightHours)}
-                {log.groundHours != null && log.groundHours > 0 ? <small class="muted">{formatHours(log.groundHours)} ground</small> : null}
+                {log.groundHours != null && log.groundHours > 0 ? <small class="muted">{formatGroundHours(log.groundHours)} ground</small> : null}
               </td>
               <td data-label="Oil">{formatOil(log.oilAddedQt)}</td>
               <td data-label="Fuel">{formatFuel(log.fuelAddedGal)}</td>
@@ -222,7 +223,10 @@ export function LogTable(props: { logs: FlightLogView[]; admin?: boolean; return
                     <small class="muted">{log.billingNote ?? BILLED_OUTSIDE_LABEL}</small>
                   </>
                 ) : (
-                  <span class="amount">{formatMoney(log.totalCostCents)}</span>
+                  <>
+                    <span class="amount">{formatMoney(log.totalCostCents)}</span>
+                    <BillLinks log={log} />
+                  </>
                 )}
               </td>
               <td class="pay-cell" data-label="Payment">

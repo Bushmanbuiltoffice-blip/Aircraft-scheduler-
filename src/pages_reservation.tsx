@@ -2,7 +2,7 @@
 import { agreementCheckoutMessage, type AgreementStatus } from "./agreement";
 import { soloInsuranceMissingMessage } from "./copy";
 import { canMarkPaid } from "./payment";
-import { formatFuel, formatMeter, formatOil, rateLabel, statusLabel } from "./format";
+import { formatFuel, formatMeter, formatMoney, formatOil, rateLabel, statusLabel } from "./format";
 import { classifyExpiration, insuranceFlagMessage, type ExpirationSource } from "./policy_expiration";
 import { todayInZone } from "./time";
 import { formatDateTime, toDateTimeLocalValue } from "./time";
@@ -158,6 +158,15 @@ export function ReservationPage(props: {
             </label>
             <small id="oil-hint" class="wide muted">Optional. Use 0 if none was added. Leave blank if it was not recorded. Oil and fuel do not change the Hobbs bill.</small>
             <small id="fuel-hint" class="wide muted">Fuel is US gallons. Use 0 if none was added. Leave blank if it was not recorded.</small>
+            {entry.instructorId ? (
+              <label>
+                Ground instruction (hours)
+                <input name="ground_hours" inputmode="decimal" pattern="\d{1,2}(\.\d{1,2})?" placeholder="0 if none" aria-describedby="ground-hint" />
+              </label>
+            ) : null}
+            {entry.instructorId ? (
+              <small id="ground-hint" class="wide muted">Optional. Leave blank or enter 0 if no ground was given. Ground uses this flight's instructor rate ({formatMoney(estimateRate)}/hr), the same rate as flight instruction. It does not change the aircraft Hobbs charge.</small>
+            ) : null}
             <p id="checkin-estimate" class="wide estimate">Enter Hobbs in to preview the cost.</p>
             <div class="actions wide">
               <button class="btn" type="submit">Check in and bill</button>

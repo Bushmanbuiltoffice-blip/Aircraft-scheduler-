@@ -22,6 +22,8 @@ export const NOTICES: Record<string, string> = {
   "insurance-saved": "Insurance PDF saved. It stays on this person's record for later solo flights.",
   "oil-saved": "Oil added updated. Hobbs, tach, charges, and payment were not changed.",
   "fuel-saved": "Fuel added updated. Hobbs, tach, charges, and payment were not changed.",
+  "ground-saved": "Ground instruction saved on the instructor bill. The aircraft Hobbs charge was not changed, and the paid mark was not changed.",
+  "ground-saved-paid": "Ground instruction saved. This flight is already marked paid for the whole rental. That paid mark was not changed. The combined total now includes this ground charge once, and the aircraft Hobbs charge was not changed.",
   "insurance-date-saved": "Insurance expiration date saved. The PDF was not changed.",
   "insurance-date-read": "Insurance expiration was read from the PDF again.",
   "agreement-signed": "Rental agreement signed and saved.",

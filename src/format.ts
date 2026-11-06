@@ -39,6 +39,12 @@ export function formatHours(hours: number): string {
   return (Math.round(hours * 10) / 10).toFixed(1);
 }
 
+/** Ground instruction is stored to the hundredth of an hour. */
+export function formatGroundHours(hours: number): string {
+  const hundredths = Math.round((hours + Number.EPSILON) * 100);
+  return (hundredths / 100).toFixed(2).replace(/0$/, "").replace(/\.0$/, "");
+}
+
 export function roleLabel(role: Role): string {
   if (role === "admin") return "Admin";
   if (role === "instructor") return "Instructor";

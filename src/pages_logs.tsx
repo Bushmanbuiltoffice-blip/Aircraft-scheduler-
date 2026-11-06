@@ -1,10 +1,12 @@
 /** @jsxImportSource hono/jsx */
-import { BILLED_OUTSIDE_LABEL, formatFuel, formatHours, formatMeter, formatMoney, formatOil, fuelInputValue, fuelTallyText, oilInputValue, oilTallyText, paperPaidLabel, rateLabel, roleLabel, tallyFuel, tallyOil } from "./format";
+import { BILLED_OUTSIDE_LABEL, formatFuel, formatGroundHours, formatHours, formatMeter, formatMoney, formatOil, fuelInputValue, fuelTallyText, oilInputValue, oilTallyText, paperPaidLabel, rateLabel, roleLabel, tallyFuel, tallyOil } from "./format";
 import { formatDateTime } from "./time";
 import type { FlightLogView, User } from "./types";
 import { LogTable } from "./pages_dash";
 import { canMarkPaid, PaymentControl } from "./payment";
 import { meterWarnings } from "./domain";
+import { canAdjustGround } from "./bills";
+import { BillLinks } from "./pages_bills";
 import { Layout, PageHead, RolePill, Warnings, type Viewer } from "./ui";
 
 export function LogsPage(props: {
@@ -76,6 +78,9 @@ export function LogDetailPage(props: {
           <div><dt>Tach (maintenance, not billed)</dt><dd>{formatMeter(log.tachOut)} → {formatMeter(log.tachIn)}</dd></div>
           <div><dt>Oil added</dt><dd>{formatOil(log.oilAddedQt)}</dd></div>
           <div><dt>Fuel added</dt><dd>{formatFuel(log.fuelAddedGal)}</dd></div>
+          {log.billingStatus === "external" ? null : (
+            <div><dt>Ground instruction</dt><dd>{log.groundCostCents == null ? (log.groundHours == null ? "Not recorded" : `${formatGroundHours(log.groundHours)} hr on the record, no ground charge`) : `${formatGroundHours(log.groundHours ?? 0)} hr · ${formatMoney(log.groundCostCents)}`}</dd></div>
+          )}
           {log.imported ? <HistoricalDetails log={log} /> : null}
         </dl>
         <FlightChargeCard log={log} admin={canMarkPaid(props.viewer.role)} returnTo={`/logs/${log.id}`} />
@@ -90,6 +95,20 @@ export function LogDetailPage(props: {
             </label>
             <p class="muted">Use 0 if none was added. Leave blank for Not recorded. Saving oil does not change Hobbs, tach, charges, payment, or fuel.</p>
             <button class="btn secondary" type="submit">Save oil</button>
+          </form>
+        </section>
+      ) : null}
+      {canAdjustGround(props.viewer, log) ? (
+        <section class="card card-pad">
+          <h2>Ground instruction</h2>
+          {log.paid ? <p class="alert" role="status">This flight is already marked paid for the whole rental. Saving ground changes the combined total and does not change that paid mark.</p> : null}
+          <form method="post" action={`/logs/${log.id}/ground`} class="stack oil-form">
+            <label>
+              Hours
+              <input name="ground_hours" inputmode="decimal" pattern="\d{1,2}(\.\d{1,2})?" value={log.groundHours == null ? "" : String(log.groundHours)} required placeholder="0 if none" />
+            </label>
+            <p class="muted">Uses the instructor rate saved on this flight ({formatMoney(log.instructorRateCents)}/hr), the same rate as flight instruction. Does not change Hobbs or the aircraft charge.</p>
+            <button class="btn secondary" type="submit">Save ground instruction</button>
           </form>
         </section>
       ) : null}
@@ -140,6 +159,7 @@ export function FlightChargeCard(props: { log: FlightLogView; admin?: boolean; r
       <aside class="cost-card">
         <h2>Not billed here</h2>
         <p>{log.billingNote ?? BILLED_OUTSIDE_LABEL}</p>
+        <BillLinks log={log} />
         <ul>
           <li>Aircraft charge {formatMoney(0)}</li>
           <li>Instructor charge {formatMoney(0)}</li>
@@ -154,9 +174,13 @@ export function FlightChargeCard(props: { log: FlightLogView; admin?: boolean; r
     <aside class="cost-card">
       <ul>
         <li>Aircraft {formatHours(log.flightHours)} × {formatMoney(log.aircraftRateCents)} = {formatMoney(log.aircraftCostCents)}</li>
-        <li>Instructor {formatHours(log.instructorHours)} × {formatMoney(log.instructorRateCents)} = {formatMoney(log.instructorCostCents)}</li>
+        <li>Flight instruction {formatHours(log.instructorHours)} × {formatMoney(log.instructorRateCents)} = {formatMoney(log.instructorCostCents)}</li>
+        {log.groundCostCents == null ? null : (
+          <li>Ground instruction {formatGroundHours(log.groundHours ?? 0)} × {formatMoney(log.groundRateCents ?? log.instructorRateCents)} = {formatMoney(log.groundCostCents)}</li>
+        )}
       </ul>
       <strong>{formatMoney(log.totalCostCents)}</strong>
+      <BillLinks log={log} />
       <div class="cost-pay">{control}</div>
     </aside>
   );

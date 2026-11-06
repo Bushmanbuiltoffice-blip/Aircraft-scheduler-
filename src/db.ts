@@ -883,6 +883,10 @@ export type FlightLogInsert = {
   oilAddedQt: number | null;
   /** US gallons added. Null means not recorded. Zero means none was added. */
   fuelAddedGal: number | null;
+  /** Null on a solo flight. On a new dual flight, 0 means no ground instruction. */
+  groundHours: number | null;
+  groundRateCents: number | null;
+  groundCostCents: number | null;
 };
 
 export async function checkInReservation(db: D1Database, log: FlightLogInsert): Promise<boolean> {
@@ -901,9 +905,9 @@ export async function checkInReservation(db: D1Database, log: FlightLogInsert): 
            hobbs_out, hobbs_in, tach_out, tach_in, flight_hours,
            aircraft_rate_cents, aircraft_cost_cents, instructor_rate_cents,
            instructor_hours, instructor_cost_cents, total_cost_cents, rate_basis, created_at,
-           oil_added_qt, fuel_added_gal
+           oil_added_qt, fuel_added_gal, ground_hours, ground_rate_cents, ground_cost_cents
          )
-         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
          WHERE EXISTS (SELECT 1 FROM reservations WHERE id = ? AND status = 'checked_in')
            AND NOT EXISTS (SELECT 1 FROM flight_logs WHERE reservation_id = ?)`,
       )
@@ -928,6 +932,9 @@ export async function checkInReservation(db: D1Database, log: FlightLogInsert): 
         log.createdAt,
         log.oilAddedQt,
         log.fuelAddedGal,
+        log.groundHours,
+        log.groundRateCents,
+        log.groundCostCents,
         log.reservationId,
         log.reservationId,
       ),
@@ -947,7 +954,7 @@ const FLIGHT_LOG_SELECT = `
   f.hobbs_out, f.hobbs_in, f.tach_out, f.tach_in, f.flight_hours,
   f.aircraft_rate_cents, f.aircraft_cost_cents, f.instructor_rate_cents,
   f.instructor_hours, f.instructor_cost_cents, f.total_cost_cents, f.rate_basis, f.created_at,
-  f.ground_hours, f.aircraft_paid, f.instructor_paid, f.maintenance_flight,
+  f.ground_hours, f.ground_rate_cents, f.ground_cost_cents, f.aircraft_paid, f.instructor_paid, f.maintenance_flight,
   f.fuel_added_gal, f.oil_added_qt, f.rental_type, f.imported,
   f.instructor_name AS guest_instructor_name, f.billing_status, f.billing_note,
   f.paid, f.paid_at, f.paid_by, (SELECT name FROM users WHERE id = f.paid_by) AS paid_by_name,
@@ -1043,6 +1050,8 @@ type FlightLogRow = {
   rate_basis: RateBasis;
   created_at: string;
   ground_hours: number | null;
+  ground_rate_cents: number | null;
+  ground_cost_cents: number | null;
   aircraft_paid: number;
   instructor_paid: number;
   maintenance_flight: number;
@@ -1088,6 +1097,8 @@ function mapFlightLog(row: FlightLogRow): FlightLogView {
     rateBasis: row.rate_basis,
     createdAt: row.created_at,
     groundHours: row.ground_hours,
+    groundRateCents: row.ground_rate_cents,
+    groundCostCents: row.ground_cost_cents,
     aircraftPaid: row.aircraft_paid === 1,
     instructorPaid: row.instructor_paid === 1,
     maintenanceFlight: row.maintenance_flight === 1,
@@ -1149,6 +1160,27 @@ export async function updateFlightLogOil(db: D1Database, id: string, quarts: num
   if (!existing) return false;
   await db.prepare("UPDATE flight_logs SET oil_added_qt = ? WHERE id = ?").bind(quarts, id).run();
   return true;
+}
+
+/**
+ * Records ground instruction on an in-app flight that has an instructor.
+ * Writes ground hours, the flight's saved instructor rate, the ground amount, and the combined total.
+ * Does not change Hobbs, aircraft charge, flight-instruction charge, or the paid mark.
+ */
+export async function updateFlightLogGround(
+  db: D1Database,
+  input: { id: string; hours: number; rateCents: number; costCents: number },
+): Promise<boolean> {
+  const result = await db
+    .prepare(
+      `UPDATE flight_logs
+       SET ground_hours = ?, ground_rate_cents = ?, ground_cost_cents = ?,
+           total_cost_cents = aircraft_cost_cents + instructor_cost_cents + ?
+       WHERE id = ? AND billing_status != 'external' AND instructor_id IS NOT NULL`,
+    )
+    .bind(input.hours, input.rateCents, input.costCents, input.costCents, input.id)
+    .run();
+  return (result.meta.changes ?? 0) > 0;
 }
 
 /**

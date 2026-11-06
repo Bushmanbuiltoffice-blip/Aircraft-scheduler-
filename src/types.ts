@@ -131,6 +131,10 @@ export interface FlightLog {
   rateBasis: RateBasis;
   createdAt: string;
   groundHours: number | null;
+  /** Instructor rate snapshotted when ground hours were recorded. Null means ground was not recorded. */
+  groundRateCents: number | null;
+  /** Saved ground charge. Null means no ground charge has been recorded. */
+  groundCostCents: number | null;
   aircraftPaid: boolean;
   instructorPaid: boolean;
   maintenanceFlight: boolean;

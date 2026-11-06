@@ -583,6 +583,24 @@ td.owed { color: #6d4b00; font-weight: 600; }
 .oil-summary { margin: 0.2rem 1rem 1rem; }
 .oil-form { max-width: 28rem; }
 #solo-insurance .btn, #agreement-required .btn { margin-top: 0.4rem; }
+.bill-links { display: flex; flex-wrap: wrap; gap: 0.4rem 0.8rem; margin: 0.35rem 0; }
+.bill-links a { font-weight: 650; }
+.bill-sheet { max-width: 40rem; }
+.bill-business { font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; margin: 0; }
+.bill-facts { margin: 1rem 0; }
+.bill-facts div { display: grid; grid-template-columns: 9rem 1fr; gap: 0.4rem 1rem; padding: 0.35rem 0; border-top: 1px solid var(--line); }
+.bill-total { display: flex; justify-content: space-between; align-items: baseline; font-size: 1.25rem; margin-top: 0.8rem; }
+.bill-pay { margin-top: 1rem; }
+.bill-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+@media (max-width: 640px) {
+  .bill-facts div { grid-template-columns: 1fr; gap: 0.1rem; }
+  .bill-actions .btn { flex: 1 1 100%; text-align: center; }
+}
+@media print {
+  .topbar, .skip, .no-print, .bill-actions, footer, .dev-secret { display: none !important; }
+  body { background: white; }
+  .bill-sheet { box-shadow: none; border: 0; max-width: none; }
+}
 .agreement-text {
   white-space: pre-wrap;
   font-family: "IBM Plex Mono", ui-monospace, monospace;
