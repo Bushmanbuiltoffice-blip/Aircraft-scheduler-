@@ -1,4 +1,5 @@
 /** @jsxImportSource hono/jsx */
+import { agreementCheckoutMessage, type AgreementStatus } from "./agreement";
 import { soloInsuranceMissingMessage } from "./copy";
 import { canMarkPaid } from "./payment";
 import { formatFuel, formatMeter, formatOil, rateLabel, statusLabel } from "./format";
@@ -29,10 +30,12 @@ export function ReservationPage(props: {
   soloInsurance?: { onFile: boolean; uploadHref: string | null; pilotName: string } | null;
   /** Set when an insurance PDF is on file, for solo and dual. A missing PDF leaves this null. */
   insuranceFlag?: { pilotName: string; date: string | null; source: ExpirationSource | null } | null;
+  agreementGate?: { pilotName: string; status: AgreementStatus; signHref: string | null } | null;
 }) {
   const entry = props.entry;
   const estimateRate = props.instructorRateCents ?? 0;
   const insuranceBlock = props.soloInsurance && !props.soloInsurance.onFile ? props.soloInsurance : null;
+  const agreementBlock = props.agreementGate && props.agreementGate.status !== "complete" ? props.agreementGate : null;
   return (
     <Layout title={entry.tailNumber} user={props.viewer} path={props.path} notice={props.notice} usingDevSecret={props.usingDevSecret}>
       <PageHead title={`${entry.tailNumber} reservation`} lede={`${entry.make} ${entry.model}`}>
@@ -69,6 +72,15 @@ export function ReservationPage(props: {
           </aside>
         )}
       </section>
+      {props.canManage && entry.status === "scheduled" && agreementBlock ? (
+        <section class="card card-pad" id="agreement-required">
+          <h2>Rental agreement needed</h2>
+          {props.actionError ? null : (
+            <p class="alert" role="alert">{agreementCheckoutMessage(agreementBlock.pilotName, agreementBlock.status)}</p>
+          )}
+          {agreementBlock.signHref ? <p><a class="btn" href={agreementBlock.signHref}>Sign the rental agreement</a></p> : <p>Ask {agreementBlock.pilotName} to sign it from their own account. An admin cannot sign it for them.</p>}
+        </section>
+      ) : null}
       {props.insuranceFlag ? <InsuranceFlagNotice flag={props.insuranceFlag} /> : null}
       {props.canManage && entry.status === "scheduled" && insuranceBlock ? (
         <section class="card card-pad" id="solo-insurance">
@@ -83,7 +95,7 @@ export function ReservationPage(props: {
           )}
         </section>
       ) : null}
-      {props.canManage && entry.status === "scheduled" && !insuranceBlock ? (
+      {props.canManage && entry.status === "scheduled" && !insuranceBlock && !agreementBlock ? (
         <section class="card card-pad">
           <h2>Check out</h2>
           {props.soloInsurance?.onFile ? <p class="muted">Insurance PDF is on file.</p> : null}

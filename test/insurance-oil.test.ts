@@ -1,5 +1,6 @@
 import { env, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
+import { giveSignedAgreement } from "./agreement_fixture";
 import { hashPassword, newToken } from "../src/auth";
 import { replaceInsurancePdf } from "../src/documents";
 import { insertUser } from "../src/db";
@@ -219,6 +220,8 @@ describe("Insurance PDF", () => {
     const renter = await makeUser({ email: "rita@example.com", name: "Rita Renter", role: "renter" });
     const student = await makeUser({ email: "sam@example.com", name: "Sam Student", role: "student" });
     const instructor = await makeUser({ email: "ivy@example.com", name: "Ivy Instructor", role: "instructor" });
+    await giveSignedAgreement(db(), renter);
+    await giveSignedAgreement(db(), student);
     const plane = await makePlane();
     const solo = await makeReservation(renter.id, plane, null);
     const again = await makeReservation(renter.id, plane, null);
@@ -394,6 +397,7 @@ describe("Oil added", () => {
   it("records oil on a new check-in and leaves it null when the box is blank", async () => {
     const admin = await makeUser({ email: "kyle@example.com", name: "Kyle Bushman", role: "admin" });
     await replaceInsurancePdf(db(), { userId: admin.id, fileName: "sample-insurance.pdf", bytes: pdfBytes("admin"), uploadedBy: admin.id });
+    await giveSignedAgreement(db(), admin);
     const plane = await makePlane();
     const withOil = await makeReservation(admin.id, plane);
     const withoutOil = await makeReservation(admin.id, plane);

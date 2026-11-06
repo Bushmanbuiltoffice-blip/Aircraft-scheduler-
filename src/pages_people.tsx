@@ -6,6 +6,8 @@ import { formatDate, formatDateTime, todayInZone } from "./time";
 import type { Aircraft, Checkout, FlightLogView, Role, ScheduleEntry, User } from "./types";
 import { Errors, Layout, PageHead, RolePill, type Viewer } from "./ui";
 import { LogTable as Logs } from "./pages_dash";
+import { AgreementAccountCard } from "./pages_agreement";
+import type { AgreementRecord, AgreementStatus } from "./agreement";
 import { FuelSummary, OilSummary } from "./pages_logs";
 import { classifyExpiration, insuranceFlagMessage, type ExpirationSource } from "./policy_expiration";
 export type PersonFormValues = {
@@ -29,7 +31,7 @@ export function PeoplePage(props: {
   path: string;
   notice?: string | null;
   usingDevSecret: boolean;
-  people: Array<User & { medicalState: string; checkoutCount: number; insuranceLabel: string; hasLogin?: boolean; inviteExpiresAt?: string | null }>;
+  people: Array<User & { medicalState: string; checkoutCount: number; insuranceLabel: string; agreementLabel: string; hasLogin?: boolean; inviteExpiresAt?: string | null }>;
 }) {
   const admin = props.viewer.role === "admin";
   return (
@@ -46,6 +48,7 @@ export function PeoplePage(props: {
               <th>Certificate</th>
               <th>Medical</th>
               <th>Insurance</th>
+              <th>Agreement</th>
               <th>Checkouts</th>
               {admin ? <th>Login</th> : null}
               {admin ? <th></th> : null}
@@ -63,6 +66,7 @@ export function PeoplePage(props: {
                   </span>
                 </td>
                 <td>{person.insuranceLabel}</td>
+                <td>{person.agreementLabel}</td>
                 <td>{person.checkoutCount}</td>
                 {admin ? (
                   <td>
@@ -135,6 +139,7 @@ export function PersonFormPage(props: {
     rereadAction: string;
     error: string | null;
   } | null;
+  agreement?: { status: AgreementStatus; record: AgreementRecord | null; downloadHref: string | null } | null;
 }) {
   return (
     <Layout title={props.values.name || "Person"} user={props.viewer} path={props.path} notice={props.notice} usingDevSecret={props.usingDevSecret}>
@@ -221,6 +226,7 @@ export function PersonFormPage(props: {
         </div>
       </form>
       {props.insurance ? <InsuranceSection insurance={props.insurance} /> : null}
+      {props.agreement ? <AgreementAccountCard own={props.mode === "self"} status={props.agreement.status} record={props.agreement.record} downloadHref={props.agreement.downloadHref} /> : null}
       {props.canEditCheckouts && props.aircraft && props.checkoutAction ? (
         <section class="card card-pad">
           <h2>Aircraft checkouts</h2>

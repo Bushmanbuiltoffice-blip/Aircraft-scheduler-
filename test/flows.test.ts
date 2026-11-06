@@ -1,5 +1,6 @@
 import { env, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
+import { giveSignedAgreement } from "./agreement_fixture";
 import { hashPassword, newToken, UNUSABLE_PASSWORD_HASH, verifyPassword } from "../src/auth";
 import prodSeedSql from "../scripts/prod-seed.sql";
 import { buildDemoSeedSql } from "../src/demo_seed";
@@ -509,6 +510,7 @@ describe("scheduling", () => {
     const location = booked.headers.get("location") ?? "";
     const id = /\/reservations\/([^?]+)/.exec(location)?.[1];
     expect(id).toBeTruthy();
+    await giveSignedAgreement(db(), pilot);
     const out = await post(`/reservations/${id}/checkout`, { hobbs_out: "100.0", tach_out: "80.0", meters_confirmed: "yes" }, cookie);
     expect(out.status).toBe(303);
     const done = await post(`/reservations/${id}/checkin`, { hobbs_in: "101.4", tach_in: "81.1" }, cookie);

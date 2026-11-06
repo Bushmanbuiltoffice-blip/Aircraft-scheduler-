@@ -13,6 +13,7 @@ import {
   replaceInsurancePdf,
   streamInsurancePdf,
 } from "./documents";
+import { agreementLabels, agreementStatus, getAgreement } from "./agreement";
 import { insuranceListLabel } from "./policy_expiration";
 import { booksOnlySelf } from "./domain";
 import { contentDisposition, isPdf, MAX_UPLOAD_BYTES, formatBytes } from "./resources";
@@ -209,7 +210,10 @@ export function registerFleet(app: Hono<AppEnv>): void {
       .prepare("SELECT user_id, expiration_date FROM user_documents WHERE kind = 'insurance'")
       .all<{ user_id: string; expiration_date: string | null }>();
     const insuranceLabels = new Map(insuranceRows.results.map((row) => [row.user_id, insuranceListLabel(row.expiration_date, today)]));
-    const invites = user.role === "admin" ? await pendingInvites(c.env.DB) : new Map<string, string>();
+    const [invites, signedLabels] = await Promise.all([
+      user.role === "admin" ? pendingInvites(c.env.DB) : Promise.resolve(new Map<string, string>()),
+      agreementLabels(c.env.DB),
+    ]);
     const checkoutCounts = new Map<string, number>();
     await Promise.all(
       people.map(async (person) => {
@@ -231,6 +235,7 @@ export function registerFleet(app: Hono<AppEnv>): void {
             hasLogin: hasWorkingLogin(person),
             inviteExpiresAt: invites.get(person.id) ?? null,
             insuranceLabel: insuranceLabels.get(person.id) ?? "No PDF",
+            agreementLabel: signedLabels.get(person.id) ?? "Not signed",
           }))}
         />,
       ),
@@ -474,6 +479,9 @@ async function personResponse(
   const logs = person && (user.role === "admin" || user.id === person.id) ? await listFlightLogs(c.env.DB, { pilotId: person.id, limit: 20 }) : undefined;
   const icalUrl = mode === "self" ? new URL(`/ical/${user.icalToken}`, c.req.url).toString() : null;
   const insurance = person && mode !== "create" ? await ensureInsuranceExpiration(c.env.DB, person.id) : null;
+  const agreement = person && mode !== "create" ? await getAgreement(c.env.DB, person.id) : null;
+  const agreementState = agreementStatus(agreement);
+  const canSeeSignedPdf = Boolean(person && agreementState === "complete" && (mode === "self" || user.role === "admin"));
   const canEditInsurance = Boolean(person && mode !== "create" && !person.deletedAt && canManageInsurancePdf(user, person.id));
   const insuranceBase = mode === "self" ? "/account/insurance" : `/pilots/${person?.id}/insurance`;
   return c.html(
@@ -518,6 +526,15 @@ async function personResponse(
                 expirationAction: `${insuranceBase}/expiration`,
                 rereadAction: `${insuranceBase}/expiration/reread`,
                 error: insuranceError,
+              }
+            : null
+        }
+        agreement={
+          person && mode !== "create"
+            ? {
+                status: agreementState,
+                record: agreementState === "missing" ? null : agreement,
+                downloadHref: canSeeSignedPdf ? (mode === "self" ? "/agreement/signed" : `/pilots/${person.id}/agreement/signed`) : null,
               }
             : null
         }

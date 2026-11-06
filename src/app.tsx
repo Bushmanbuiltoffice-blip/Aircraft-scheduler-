@@ -8,6 +8,7 @@ import { readSessionCookie } from "./http";
 import { registerAuth } from "./routes_auth";
 import { registerFleet } from "./routes_fleet";
 import { registerInvites } from "./routes_invite";
+import { registerAgreement } from "./routes_agreement";
 import { registerResources } from "./routes_resources";
 import { registerTbx } from "./routes_tbx";
 import { registerSchedule } from "./routes_schedule";
@@ -97,6 +98,7 @@ export function createApp(): Hono<AppEnv> {
   registerInvites(app);
   registerFleet(app);
   registerSchedule(app);
+  registerAgreement(app);
   registerResources(app);
   registerTbx(app);
 

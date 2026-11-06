@@ -1,6 +1,8 @@
 /** @jsxImportSource hono/jsx */
 import { formatBytes, MAX_UPLOAD_BYTES, REFERENCE_NOTE, type Resource, type ResourceGroup } from "./resources";
 import type { Aircraft } from "./types";
+import { AgreementResourceCard } from "./pages_agreement";
+import type { AgreementStatus } from "./agreement";
 import { Layout, PageHead, type Viewer } from "./ui";
 
 export function ResourcesPage(props: {
@@ -11,11 +13,13 @@ export function ResourcesPage(props: {
   aircraft: Aircraft[];
   notice?: string | null;
   error?: string | null;
+  agreementStatus: AgreementStatus;
 }) {
   const admin = props.viewer.role === "admin";
   return (
     <Layout title="Resources" user={props.viewer} path={props.path} usingDevSecret={props.usingDevSecret} notice={props.notice} error={props.error}>
-      <PageHead title="Resources" lede="Manuals and reference documents for the fleet. Tap View to open a PDF on your phone, or Download to keep a copy." />
+      <PageHead title="Resources" lede="Manuals and reference documents for the fleet. The rental agreement can be read and signed here. Tap View to open a PDF on your phone, or Download to keep a copy." />
+      <AgreementResourceCard status={props.agreementStatus} />
       {props.groups.length === 0 ? (
         <section class="card card-pad"><p class="muted">No documents yet.</p></section>
       ) : (

@@ -24,6 +24,9 @@ export const NOTICES: Record<string, string> = {
   "fuel-saved": "Fuel added updated. Hobbs, tach, charges, and payment were not changed.",
   "insurance-date-saved": "Insurance expiration date saved. The PDF was not changed.",
   "insurance-date-read": "Insurance expiration was read from the PDF again.",
+  "agreement-signed": "Rental agreement signed and saved.",
+  "agreement-guardian": "Your signature is saved. The agreement is not complete until a parent or legal guardian signs separately.",
+  "agreement-already-signed": "This agreement was already signed. The saved signature was not changed.",
 };
 
 /** Shown at solo check-out when the pilot has no insurance PDF. Presence of a PDF is the whole requirement. */

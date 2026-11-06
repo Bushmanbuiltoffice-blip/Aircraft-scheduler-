@@ -1,6 +1,7 @@
 import { env, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { hashPassword, newToken } from "../src/auth";
+import { giveSignedAgreement } from "./agreement_fixture";
 import { replaceInsurancePdf } from "../src/documents";
 import { insertUser } from "../src/db";
 import { classifyExpiration, expirationFromText, extractPolicyExpiration, windowEnd } from "../src/policy_expiration";
@@ -199,6 +200,8 @@ describe("insurance expiration on profiles and checkout", () => {
     expect(account).toContain("read from the PDF");
     expect(account).toContain('id="insurance-expiration"');
 
+    await giveSignedAgreement(db(), renter);
+    await giveSignedAgreement(db(), student);
     const solo = await makeReservation(renter.id, plane, null);
     const soloPage = await (await get(`/reservations/${solo}`, renterCookie)).text();
     expect(soloPage).toContain("has passed");
@@ -317,6 +320,7 @@ describe("fuel added", () => {
   it("records fuel at check-in and leaves a blank as not recorded", async () => {
     const admin = await makeUser({ email: "kyle@example.com", name: "Kyle Bushman", role: "admin" });
     await replaceInsurancePdf(db(), { userId: admin.id, fileName: "sample-insurance.pdf", bytes: textPdf("Expiration Date: 01/01/2099"), uploadedBy: admin.id });
+    await giveSignedAgreement(db(), admin);
     const plane = await makePlane();
     const withFuel = await makeReservation(admin.id, plane, null);
     const blank = await makeReservation(admin.id, plane, null);

@@ -1,5 +1,6 @@
 import { env, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
+import { giveSignedAgreement } from "./agreement_fixture";
 import { hashPassword, newToken } from "../src/auth";
 import { billingByPilot, findBookingClash, getFlightLog, insertAircraft, insertReservationIfFree, insertUser } from "../src/db";
 import { BILLED_OUTSIDE_LABEL } from "../src/format";
@@ -291,6 +292,7 @@ describe("historical flight import", () => {
     const pilotPage = await get(`/pilots/${noah?.id}`, cookie);
     expect(await pilotPage.text()).toContain("already paid outside the app");
 
+    await giveSignedAgreement(db(), admin);
     const checkedOut = await post(`/reservations/${futureId}/checkout`, { hobbs_out: "400.0", tach_out: "500.0", meters_confirmed: "yes" }, cookie);
     expect(checkedOut.status).toBe(303);
     const checkedIn = await post(`/reservations/${futureId}/checkin`, { hobbs_in: "401.0", tach_in: "501.0" }, cookie);

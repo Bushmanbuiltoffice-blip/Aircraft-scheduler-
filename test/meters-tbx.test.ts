@@ -1,5 +1,6 @@
 import { env, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
+import { giveSignedAgreement } from "./agreement_fixture";
 import { hashPassword, newToken } from "../src/auth";
 import { replaceInsurancePdf } from "../src/documents";
 import { insertUser } from "../src/db";
@@ -134,6 +135,7 @@ describe("Hobbs and tach on every flight", () => {
   async function setup() {
     const admin = await makeUser({ email: "kyle@example.com", name: "Kyle Bushman", role: "admin" });
     await replaceInsurancePdf(db(), { userId: admin.id, fileName: "sample-insurance.pdf", bytes: samplePdf(), uploadedBy: admin.id });
+    await giveSignedAgreement(db(), admin);
     const plane = await makePlane();
     const reservation = await makeReservation(admin.id, plane);
     return { admin, plane, reservation, cookie: await login(admin.email) };
@@ -244,6 +246,7 @@ describe("TBX update page (manual hand-off)", () => {
   it("shows current meters with copy buttons, lists flights since the last entry, exports CSV, and records entries", async () => {
     const admin = await makeUser({ email: "kyle@example.com", name: "Kyle Bushman", role: "admin" });
     await replaceInsurancePdf(db(), { userId: admin.id, fileName: "sample-insurance.pdf", bytes: samplePdf(), uploadedBy: admin.id });
+    await giveSignedAgreement(db(), admin);
     const plane = await makePlane();
     const cookie = await login(admin.email);
     const reservation = await makeReservation(admin.id, plane);

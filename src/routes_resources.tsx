@@ -1,5 +1,6 @@
 /** @jsxImportSource hono/jsx */
 import type { Context, Hono } from "hono";
+import { agreementStatus, getAgreement } from "./agreement";
 import { pageNotice } from "./copy";
 import { getAircraft, listAircraft } from "./db";
 import { viewerOf } from "./http";
@@ -61,7 +62,11 @@ export function registerResources(app: Hono<AppEnv>): void {
 }
 
 async function renderPage(c: Context<AppEnv>, user: User, notice: string | null, error: string | null, status: 200 | 400 | 413 = 200) {
-  const [resources, aircraft] = await Promise.all([listResources(c.env.DB), listAircraft(c.env.DB)]);
+  const [resources, aircraft, agreement] = await Promise.all([
+    listResources(c.env.DB),
+    listAircraft(c.env.DB),
+    getAgreement(c.env.DB, user.id),
+  ]);
   return c.html(
     document(
       <ResourcesPage
@@ -72,6 +77,7 @@ async function renderPage(c: Context<AppEnv>, user: User, notice: string | null,
         aircraft={aircraft}
         notice={notice}
         error={error}
+        agreementStatus={agreementStatus(agreement)}
       />,
     ),
     status,

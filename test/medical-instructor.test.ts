@@ -1,5 +1,6 @@
 import { env, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
+import { giveSignedAgreement } from "./agreement_fixture";
 import { hashPassword, newToken } from "../src/auth";
 import { insertAircraft, insertUser, upsertCheckout } from "../src/db";
 import { MEDICAL_WITH_INSTRUCTOR_NOTE } from "../src/domain";
@@ -219,6 +220,7 @@ describe("medical with an instructor aboard", () => {
 
   it("checks out and checks in a dual flight for a pilot without a current medical", async () => {
     const { juan, student, aircraft } = await setup();
+    await giveSignedAgreement(db(), student);
     const cookie = await login(student.email);
     const times = slot(1, "09:00", "11:00");
     const dual = await post(

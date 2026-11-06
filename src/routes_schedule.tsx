@@ -2,6 +2,7 @@
 import type { Context, Hono } from "hono";
 import { RESOURCE_TONES, buildDayBoard, buildMonthCalendar, buildWeekBoard, type BoardEvent, type BoardResource, type MonthEntry } from "./board";
 import { booksOnlySelf, canBookDespiteEligibility, computeFlightCost, eligibilityAllowsBooking, medicalWaivedByInstructor, meterWarnings, pilotEligibility, soloCheckoutNeedsInsurance, validateReservationWindow } from "./domain";
+import { agreementAllowsCheckout, agreementCheckoutMessage, agreementStatus, getAgreement } from "./agreement";
 import { ensureInsuranceExpiration } from "./documents";
 import { createEmailSender, reservationMessage, safeSend } from "./email";
 import { formatMoney, parseFuelGallons, parseMeter, parseOilQuarts } from "./format";
@@ -248,6 +249,10 @@ export function registerSchedule(app: Hono<AppEnv>): void {
     const entry = await getScheduleEntry(c.env.DB, c.req.param("id"));
     if (!entry) return c.notFound();
     if (!canManage(user, entry)) return forbidden(c);
+    const agreement = await getAgreement(c.env.DB, entry.pilotId);
+    if (!agreementAllowsCheckout(agreement)) {
+      return renderReservation(c, entry.id, agreementCheckoutMessage(entry.pilotName, agreementStatus(agreement)));
+    }
     if (soloCheckoutNeedsInsurance(entry.instructorId)) {
       const insurance = await ensureInsuranceExpiration(c.env.DB, entry.pilotId);
       if (!insurance) return renderReservation(c, entry.id, soloInsuranceMissingMessage(entry.pilotName));
@@ -523,6 +528,8 @@ async function renderReservation(c: Context<AppEnv>, id: string, actionError: st
   const entry = await getScheduleEntry(c.env.DB, id);
   if (!entry) return c.notFound();
   const needsInsurance = entry.status === "scheduled" && soloCheckoutNeedsInsurance(entry.instructorId);
+  const agreement = entry.status === "scheduled" ? await getAgreement(c.env.DB, entry.pilotId) : null;
+  const agreementState = agreementStatus(agreement);
   const [aircraft, pilot, checkout, log, insurance] = await Promise.all([
     getAircraft(c.env.DB, entry.aircraftId),
     getUserById(c.env.DB, entry.pilotId),
@@ -577,6 +584,15 @@ async function renderReservation(c: Context<AppEnv>, id: string, actionError: st
                       ? `/pilots/${entry.pilotId}#insurance`
                       : null,
                 pilotName: entry.pilotName,
+              }
+            : null
+        }
+        agreementGate={
+          entry.status === "scheduled" && agreementState !== "complete"
+            ? {
+                pilotName: entry.pilotName,
+                status: agreementState,
+                signHref: user.id === entry.pilotId ? "/agreement" : null,
               }
             : null
         }

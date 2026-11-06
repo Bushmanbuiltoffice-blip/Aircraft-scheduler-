@@ -582,4 +582,13 @@ td.owed { color: #6d4b00; font-weight: 600; }
 #insurance .stack { margin-top: 0.8rem; }
 .oil-summary { margin: 0.2rem 1rem 1rem; }
 .oil-form { max-width: 28rem; }
-#solo-insurance .btn { margin-top: 0.4rem; }
+#solo-insurance .btn, #agreement-required .btn { margin-top: 0.4rem; }
+.agreement-text {
+  white-space: pre-wrap;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  max-height: 28rem;
+  overflow: auto;
+  margin: 0;
+}
