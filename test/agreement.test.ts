@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { AGREEMENT_PDF_SHA256, AGREEMENT_TEXT, AGREEMENT_TEXT_SHA256, AGREEMENT_VERSION } from "../src/agreements/canonical";
 import { canonicalAgreementPdf } from "../src/agreement";
 import { signedAgreementDocument } from "../src/agreement_pdf";
+
+const PREVIOUS_VERSION = "fire-hound-rental-agreement-2026-11-06";
+const PREVIOUS_TEXT_SHA256 = "21089c85f56c1e541b6fd779e7a49f87bcbc9d1f1f676f0fdf329fc242284455";
 import { hashPassword, newToken } from "../src/auth";
 import { insertUser, removePerson } from "../src/db";
 import { addDays, todayInZone } from "../src/time";
@@ -121,7 +124,10 @@ describe("rental agreement signing", () => {
     expect(AGREEMENT_TEXT).toContain("less than twenty-four (24) hours");
     expect(AGREEMENT_TEXT).toContain("$50 cancellation fee");
     expect(AGREEMENT_TEXT).toContain("Cancellations due to weather are exempt");
-    expect(AGREEMENT_TEXT).toContain("$60,000.00");
+    expect(AGREEMENT_TEXT).toContain("$75,000.00");
+    expect(AGREEMENT_TEXT).not.toContain("$60,000.00");
+    expect(AGREEMENT_VERSION).toBe("fire-hound-rental-agreement-2026-11-06-75000");
+    expect(AGREEMENT_TEXT_SHA256).not.toBe(PREVIOUS_TEXT_SHA256);
     expect(AGREEMENT_TEXT).toContain("medical certificate");
     const pdf = canonicalAgreementPdf();
     expect(new TextDecoder().decode(pdf.slice(0, 5))).toBe("%PDF-");
@@ -237,9 +243,10 @@ describe("rental agreement signing", () => {
       guardianLegalName: stored!.guardian_legal_name,
       guardianSignedAt: stored!.guardian_signed_at,
     });
-    for (const phrase of ["Fire Hound Rental", "cash or check only", "less than twenty-four (24) hours", "$50 cancellation fee", "Cancellations due to weather are exempt", "$60,000.00", "medical certificate", "Rita Jane Renter", AGREEMENT_TEXT_SHA256, "not a SignWell signature", "*If renter is a minor a parent or legal guardian must also sign."]) {
+    for (const phrase of ["Fire Hound Rental", "cash or check only", "less than twenty-four (24) hours", "$50 cancellation fee", "Cancellations due to weather are exempt", "$75,000.00", "medical certificate", "Rita Jane Renter", AGREEMENT_TEXT_SHA256, "not a SignWell signature", "*If renter is a minor a parent or legal guardian must also sign."]) {
       expect(documentText).toContain(phrase);
     }
+    expect(documentText).not.toContain("$60,000.00");
     expect(documentText).not.toContain("_______________________________");
     const signedPdf = await get("/agreement/signed", renterCookie);
     expect(signedPdf.status).toBe(200);
@@ -267,6 +274,69 @@ describe("rental agreement signing", () => {
       .run();
     expect(await removePerson(db(), renter.id, now)).toBe("soft");
     expect(await db().prepare("SELECT legal_name FROM agreement_signatures WHERE user_id = ? AND version_id = ?").bind(renter.id, AGREEMENT_VERSION).first("legal_name")).toBe("Rita Jane Renter");
+  });
+
+  it("keeps a $60,000 signature on the old version and requires a new signature for $75,000", async () => {
+    const admin = await makeUser({ email: "kyle@example.com", name: "Kyle Bushman", role: "admin" });
+    const renter = await makeUser({ email: "rita@example.com", name: "Rita Renter", role: "renter" });
+    const oldTerms = AGREEMENT_TEXT.replace("$75,000.00", "$60,000.00");
+    const oldHashBytes = new TextEncoder().encode(oldTerms);
+    const oldDigest = await crypto.subtle.digest("SHA-256", oldHashBytes);
+    const oldHash = [...new Uint8Array(oldDigest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    expect(oldHash).toBe(PREVIOUS_TEXT_SHA256);
+    const signedAt = "2026-11-06T18:00:00.000Z";
+    await db()
+      .prepare(
+        `INSERT INTO agreement_signatures (
+           id, user_id, version_id, terms_sha256, terms_text, account_name, account_email, legal_name,
+           age_statement, renter_signed_at, status, guardian_legal_name, guardian_signed_at, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, 'Rita Jane Renter', 'adult', ?, 'complete', NULL, NULL, ?)`,
+      )
+      .bind(crypto.randomUUID(), renter.id, PREVIOUS_VERSION, PREVIOUS_TEXT_SHA256, oldTerms, renter.name, renter.email, signedAt, signedAt)
+      .run();
+    const plane = await makePlane();
+    const solo = await makeReservation(renter.id, plane, null);
+    const cookie = await login(renter.email);
+    const blocked = await post(`/reservations/${solo}/checkout`, METERS, cookie);
+    expect(blocked.status).toBe(422);
+    expect(await blocked.text()).toContain("has not signed");
+    const signed = await post("/agreement/sign", SIGN, cookie);
+    expect(signed.status).toBe(303);
+    const rows = await db()
+      .prepare("SELECT version_id, terms_sha256, terms_text, legal_name, renter_signed_at FROM agreement_signatures WHERE user_id = ? ORDER BY version_id")
+      .bind(renter.id)
+      .all<{ version_id: string; terms_sha256: string; terms_text: string; legal_name: string; renter_signed_at: string }>();
+    const previous = rows.results.find((row) => row.version_id === PREVIOUS_VERSION);
+    const current = rows.results.find((row) => row.version_id === AGREEMENT_VERSION);
+    expect(previous?.terms_text).toContain("$60,000.00");
+    expect(previous?.terms_text).not.toContain("$75,000.00");
+    expect(previous?.terms_sha256).toBe(PREVIOUS_TEXT_SHA256);
+    expect(previous?.renter_signed_at).toBe(signedAt);
+    expect(current?.terms_text).toContain("$75,000.00");
+    expect(current?.terms_text).not.toContain("$60,000.00");
+    expect(current?.terms_sha256).toBe(AGREEMENT_TEXT_SHA256);
+    expect(current?.terms_sha256).not.toBe(previous?.terms_sha256);
+    const oldCopy = signedAgreementDocument({
+      id: "old",
+      userId: renter.id,
+      versionId: PREVIOUS_VERSION,
+      termsSha256: PREVIOUS_TEXT_SHA256,
+      termsText: oldTerms,
+      accountName: renter.name,
+      accountEmail: renter.email,
+      legalName: "Rita Jane Renter",
+      ageStatement: "adult",
+      renterSignedAt: signedAt,
+      status: "complete",
+      guardianLegalName: null,
+      guardianSignedAt: null,
+    });
+    expect(oldCopy).toContain("$60,000.00");
+    expect(oldCopy).toContain(PREVIOUS_VERSION);
+    expect(oldCopy).toContain(PREVIOUS_TEXT_SHA256);
+    expect(oldCopy).not.toContain("$75,000.00");
+    expect(oldCopy).not.toContain(AGREEMENT_VERSION);
+    void admin;
   });
 
   it("does not complete a minor's agreement until a parent signs separately", async () => {

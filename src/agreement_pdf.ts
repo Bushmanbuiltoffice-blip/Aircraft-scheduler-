@@ -1,6 +1,6 @@
 /** Builds a PDF whose words are the canonical agreement plus this signing record. Not a SignWell document. */
 
-import { AGREEMENT_TEXT, AGREEMENT_TEXT_SHA256, AGREEMENT_VERSION } from "./agreements/canonical";
+import { AGREEMENT_TEXT } from "./agreements/canonical";
 import type { AgreementRecord } from "./agreement";
 
 const MINOR_CLAUSE = "*If renter is a minor a parent or legal guardian must also sign.";
@@ -19,12 +19,12 @@ const WIN: Record<number, number> = {
 export const ESIGN_STATEMENT =
   "I agree to sign this agreement electronically. My typed full legal name is my signature. This record was stored by the Firehound Rental scheduling application. It is not a SignWell signature and is not certified by SignWell or any other e-sign vendor.";
 
-export function agreementBodyBeforeSignatures(): string {
-  const at = AGREEMENT_TEXT.indexOf(SIGNATURE_MARK);
-  if (at < 0 || !AGREEMENT_TEXT.includes(MINOR_CLAUSE)) {
+export function agreementBodyBeforeSignatures(terms: string = AGREEMENT_TEXT): string {
+  const at = terms.indexOf(SIGNATURE_MARK);
+  if (at < 0 || !terms.includes(MINOR_CLAUSE)) {
     throw new Error("Canonical agreement signature section was not found.");
   }
-  return AGREEMENT_TEXT.slice(0, at);
+  return terms.slice(0, at);
 }
 
 export function signedAgreementDocument(record: AgreementRecord): string {
@@ -37,7 +37,7 @@ export function signedAgreementDocument(record: AgreementRecord): string {
       ].join("\n")
     : "No parent or legal guardian signature was recorded. The renter stated they are 18 or older. The renter's own name and checkbox are not parent consent.";
   return [
-    agreementBodyBeforeSignatures(),
+    agreementBodyBeforeSignatures(record.termsText),
     `Name: ${record.legalName}    Renter`,
     `Electronic signature: ${record.legalName}`,
     `Date: ${record.renterSignedAt}    Renter`,
@@ -49,8 +49,8 @@ export function signedAgreementDocument(record: AgreementRecord): string {
     "",
     guardian,
     "",
-    `Agreement version: ${AGREEMENT_VERSION}`,
-    `Terms SHA-256: ${AGREEMENT_TEXT_SHA256}`,
+    `Agreement version: ${record.versionId}`,
+    `Terms SHA-256: ${record.termsSha256}`,
     "",
   ].join("\n");
 }
