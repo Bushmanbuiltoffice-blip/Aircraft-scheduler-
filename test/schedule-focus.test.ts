@@ -2,7 +2,7 @@ import { env, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { hashPassword, newToken } from "../src/auth";
 import { insertUser } from "../src/db";
-import { launchRedirect } from "../src/app_launch";
+import { launchRedirect, replayResume } from "../src/app_launch";
 import { scrollToReveal, weekScrollLeft } from "../src/schedule_focus";
 import { addDays, monthGrid, startOfWeek, todayInZone } from "../src/time";
 import type { User } from "../src/types";
@@ -125,6 +125,73 @@ describe("schedule opens with today in view", () => {
     expect(launchRedirect({ standalone: false, hasSession: false, path: "/schedule" })).toBeNull();
     expect(launchRedirect({ standalone: true, hasSession: false, path: "/invite/token" })).toBeNull();
     expect(launchRedirect({ standalone: true, hasSession: false, path: "/setup" })).toBeNull();
+    expect(launchRedirect({ standalone: false, hasSession: false, path: "/logs/abc/record" })).toBeNull();
+  });
+
+  it("returns a backgrounded installed app to the dashboard and leaves print, forms, and signing", () => {
+    const schedule = { standalone: true, path: "/schedule", formDirty: false };
+    expect(replayResume({ ...schedule, events: [
+      { type: "visibility", state: "hidden", at: 0 },
+      { type: "visibility", state: "visible", at: 5_000 },
+    ] })).toBe("/");
+    expect(replayResume({ ...schedule, events: [
+      { type: "visibility", state: "hidden", at: 0 },
+      { type: "visibility", state: "visible", at: 400 },
+    ] })).toBeNull();
+    expect(replayResume({ ...schedule, formDirty: true, events: [
+      { type: "visibility", state: "hidden", at: 0 },
+      { type: "visibility", state: "visible", at: 8_000 },
+    ] })).toBeNull();
+    expect(replayResume({ standalone: true, path: "/agreement", formDirty: false, events: [
+      { type: "visibility", state: "hidden", at: 0 },
+      { type: "visibility", state: "visible", at: 8_000 },
+    ] })).toBeNull();
+    expect(replayResume({ standalone: true, path: "/logs/abc/record", formDirty: false, events: [
+      { type: "beforeprint", at: 0 },
+      { type: "visibility", state: "hidden", at: 10 },
+      { type: "visibility", state: "visible", at: 12_000 },
+    ] })).toBeNull();
+    expect(replayResume({ standalone: true, path: "/logs/abc/record", formDirty: false, events: [
+      { type: "beforeprint", at: 0 },
+      { type: "afterprint", at: 4_000 },
+      { type: "visibility", state: "hidden", at: 4_010 },
+      { type: "visibility", state: "visible", at: 6_000 },
+    ] })).toBeNull();
+    expect(replayResume({ standalone: true, path: "/logs/abc/record", formDirty: false, events: [
+      { type: "beforeprint", at: 0 },
+      { type: "afterprint", at: 4_000 },
+      { type: "visibility", state: "hidden", at: 10_000 },
+      { type: "visibility", state: "visible", at: 15_000 },
+    ] })).toBe("/");
+    expect(replayResume({ standalone: true, path: "/logs/abc/bill/aircraft", formDirty: false, events: [
+      { type: "file", at: 0 },
+      { type: "visibility", state: "hidden", at: 20 },
+      { type: "visibility", state: "visible", at: 6_000 },
+    ] })).toBeNull();
+    expect(replayResume({ ...schedule, events: [
+      { type: "pagehide", at: 0, persisted: true },
+      { type: "pageshow", at: 80, persisted: true },
+    ] })).toBeNull();
+    expect(replayResume({ ...schedule, events: [
+      { type: "pagehide", at: 0, persisted: true },
+      { type: "pageshow", at: 9_000, persisted: true },
+    ] })).toBe("/");
+    expect(replayResume({ ...schedule, events: [
+      { type: "pagehide", at: 0, persisted: false },
+      { type: "visibility", state: "visible", at: 4_000 },
+    ] })).toBeNull();
+    expect(replayResume({ standalone: false, path: "/schedule", formDirty: false, events: [
+      { type: "visibility", state: "hidden", at: 0 },
+      { type: "visibility", state: "visible", at: 5_000 },
+    ] })).toBeNull();
+    expect(replayResume({ standalone: true, path: "/invite/token", formDirty: false, events: [
+      { type: "visibility", state: "hidden", at: 0 },
+      { type: "visibility", state: "visible", at: 5_000 },
+    ] })).toBeNull();
+    expect(replayResume({ ...schedule, events: [
+      { type: "visibility", state: "hidden", at: 0 },
+      { type: "resume", at: 4_000 },
+    ] })).toBe("/");
   });
 
   it("marks today on the opened schedule and not on another date or the dashboard", async () => {
