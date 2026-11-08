@@ -192,6 +192,12 @@ describe("schedule opens with today in view", () => {
       { type: "visibility", state: "hidden", at: 0 },
       { type: "resume", at: 4_000 },
     ] })).toBe("/");
+    expect(replayResume({ ...schedule, pdfHold: true, events: [
+      { type: "visibility", state: "hidden", at: 0 },
+      { type: "visibility", state: "visible", at: 20_000 },
+    ] })).toBeNull();
+    expect(launchRedirect({ standalone: true, hasSession: false, path: "/logs/abc/bill/aircraft.pdf", pdfHold: true })).toBeNull();
+    expect(launchRedirect({ standalone: true, hasSession: false, path: "/logs/abc/record.pdf" })).toBeNull();
   });
 
   it("marks today on the opened schedule and not on another date or the dashboard", async () => {

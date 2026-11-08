@@ -2,6 +2,7 @@
 import { BILLED_OUTSIDE_LABEL, formatFuel, formatGroundHours, formatHours, formatMeter, formatOil } from "./format";
 import { formatDateTime } from "./time";
 import type { FlightLogView } from "./types";
+import { flightRecordPdfName } from "./printable";
 import { Layout, type Viewer } from "./ui";
 
 const NOT_RECORDED = "Not recorded";
@@ -56,7 +57,8 @@ export function FlightRecordPage(props: { viewer: Viewer; usingDevSecret: boolea
             : "Hobbs is the billed time. Tach is a maintenance reading and is not used to calculate a charge. Saved charges, if any, stay on the separate bills."}
         </p>
         <p class="no-print bill-actions">
-          <button class="btn" id="print-record" type="button">Print or save PDF</button>
+          <button class="btn browser-print" id="print-record" type="button">Print</button>
+          <a class="btn save-pdf" id="save-pdf" href={`/logs/${log.id}/record.pdf`} download={flightRecordPdfName(log.id)}>Save PDF</a>
           <a class="btn secondary" href={`/logs/${log.id}`}>Back to this flight</a>
         </p>
         <script src="/bill-print.js"></script>

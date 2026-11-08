@@ -19,7 +19,7 @@
   try {
     var fresh = sessionStorage.getItem(key) !== "1";
     sessionStorage.setItem(key, "1");
-    if (fresh && path !== "/" && path.indexOf("/invite/") !== 0 && path.indexOf("/setup") !== 0) {
+    if (fresh && !pdfHoldActive() && path !== "/" && path.indexOf("/invite/") !== 0 && path.indexOf("/setup") !== 0 && path.slice(-4) !== ".pdf") {
       location.replace("/");
       return;
     }
@@ -61,10 +61,21 @@
     }
   }
 
+  function pdfHoldActive() {
+    try {
+      var started = Number(sessionStorage.getItem("fh_pdf_hold"));
+      return Number.isFinite(started) && Date.now() - started < 120000;
+    } catch (error) {
+      return false;
+    }
+  }
+
   function goHome(at, hiddenMs, picker) {
     var current = location.pathname;
+    if (pdfHoldActive()) return;
     if (current === "/" || current.indexOf("/invite/") === 0 || current.indexOf("/setup") === 0) return;
     if (current === "/agreement" || current.indexOf("/agreement/") === 0) return;
+    if (current.slice(-4) === ".pdf") return;
     if (printingNow(at) || formDirty() || picker) return;
     if (hiddenMs < awayMs) return;
     location.replace("/");
@@ -118,6 +129,12 @@
 
   document.addEventListener("click", function (event) {
     var target = event.target;
-    if (target && target.closest && target.closest("input[type=file]")) filePicker = true;
+    if (!target || !target.closest) return;
+    if (target.closest("input[type=file]")) filePicker = true;
+    var link = target.closest("a");
+    var href = link ? link.getAttribute("href") || "" : "";
+    if (link && (link.hasAttribute("download") || href.slice(-4) === ".pdf")) {
+      try { sessionStorage.setItem("fh_pdf_hold", String(Date.now())); } catch (error) { /* keep the page */ }
+    }
   }, true);
 })();

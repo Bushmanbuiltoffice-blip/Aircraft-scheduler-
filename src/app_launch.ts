@@ -17,9 +17,10 @@ export const WEB_MANIFEST = `{
 }
 `;
 
-export function launchRedirect(input: { standalone: boolean; hasSession: boolean; path: string }): "/" | null {
-  if (!input.standalone || input.hasSession) return null;
+export function launchRedirect(input: { standalone: boolean; hasSession: boolean; path: string; pdfHold?: boolean }): "/" | null {
+  if (!input.standalone || input.hasSession || input.pdfHold) return null;
   if (input.path === "/" || input.path.startsWith("/invite/") || input.path.startsWith("/setup")) return null;
+  if (input.path.endsWith(".pdf")) return null;
   return "/";
 }
 
@@ -33,10 +34,13 @@ export function resumeRedirect(input: {
   printing: boolean;
   formDirty: boolean;
   filePicker: boolean;
+  pdfHold?: boolean;
 }): "/" | null {
   if (!input.standalone) return null;
+  if (input.pdfHold) return null;
   if (input.path === "/" || input.path.startsWith("/invite/") || input.path.startsWith("/setup")) return null;
   if (input.path === "/agreement" || input.path.startsWith("/agreement/")) return null;
+  if (input.path.endsWith(".pdf")) return null;
   if (input.printing || input.formDirty || input.filePicker) return null;
   if (input.hiddenMs < RESUME_AWAY_MS) return null;
   return "/";
@@ -60,6 +64,7 @@ export function replayResume(input: {
   standalone: boolean;
   path: string;
   formDirty: boolean;
+  pdfHold?: boolean;
   events: ResumeEvent[];
 }): "/" | null {
   let hiddenAt: number | null = null;
@@ -78,6 +83,7 @@ export function replayResume(input: {
       printing: printingAt(at),
       formDirty: input.formDirty,
       filePicker: picker,
+      pdfHold: input.pdfHold,
     });
 
   for (const event of input.events) {

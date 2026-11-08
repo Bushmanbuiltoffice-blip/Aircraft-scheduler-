@@ -44,6 +44,8 @@ import {
 import { checked, field, isUuid, readForm, viewerOf } from "./http";
 import { DASHBOARD_LOG_LIMIT, DashboardPage } from "./pages_dash";
 import { FlightRecordPage } from "./pages_flight_record";
+import { aircraftBillLines, aircraftPdfName, flightRecordLines, flightRecordPdfName, instructorBillLines, instructorPdfName } from "./printable";
+import { textPdf } from "./text_pdf";
 import { LogDetailPage, LogsPage } from "./pages_logs";
 import { ReservationPage } from "./pages_reservation";
 import { ReservationFormPage, SchedulePage, type ReservationFormValues } from "./pages_schedule";
@@ -374,9 +376,12 @@ export function registerSchedule(app: Hono<AppEnv>): void {
   app.get("/logs/:id", async (c) => renderLog(c, c.req.param("id"), null));
 
   app.get("/logs/:id/record", async (c) => renderFlightRecord(c, c.req.param("id")));
+  app.get("/logs/:id/record.pdf", async (c) => renderFlightRecordPdf(c, c.req.param("id")));
 
   app.get("/logs/:id/bill/aircraft", async (c) => renderAircraftBill(c, c.req.param("id")));
   app.get("/logs/:id/bill/instructor", async (c) => renderInstructorBill(c, c.req.param("id")));
+  app.get("/logs/:id/bill/aircraft.pdf", async (c) => renderAircraftPdf(c, c.req.param("id")));
+  app.get("/logs/:id/bill/instructor.pdf", async (c) => renderInstructorPdf(c, c.req.param("id")));
 
   app.post("/logs/:id/oil", async (c) => {
     const user = mustUser(c);
@@ -727,6 +732,44 @@ async function privateHtml(body: Response | Promise<Response>): Promise<Response
   const response = await body;
   response.headers.set("Cache-Control", "private, no-store");
   return response;
+}
+
+function privatePdf(bytes: Uint8Array, filename: string): Response {
+  return new Response(bytes, {
+    headers: {
+      "content-type": "application/pdf",
+      "content-disposition": `attachment; filename="${filename}"`,
+      "cache-control": "private, no-store",
+      "x-content-type-options": "nosniff",
+    },
+  });
+}
+
+async function renderAircraftPdf(c: Context<AppEnv>, id: string): Promise<Response> {
+  const user = mustUser(c);
+  const log = await getFlightLog(c.env.DB, id);
+  if (!log) return c.notFound();
+  if (!canReadLog(user, log)) return forbidden(c);
+  if (!canPrintAircraftBill(log)) return c.text(externalBillReason(log) ?? "No aircraft bill.", 404);
+  return privatePdf(textPdf(aircraftBillLines(log)), aircraftPdfName(log.id));
+}
+
+async function renderInstructorPdf(c: Context<AppEnv>, id: string): Promise<Response> {
+  const user = mustUser(c);
+  const log = await getFlightLog(c.env.DB, id);
+  if (!log) return c.notFound();
+  if (!canReadLog(user, log)) return forbidden(c);
+  const blocked = instructorBillBlockedReason(log);
+  if (blocked || !canPrintInstructorBill(log)) return c.text(blocked ?? "No instructor bill.", 404);
+  return privatePdf(textPdf(instructorBillLines(log)), instructorPdfName(log.id));
+}
+
+async function renderFlightRecordPdf(c: Context<AppEnv>, id: string): Promise<Response> {
+  const user = mustUser(c);
+  const log = await getFlightLog(c.env.DB, id);
+  if (!log) return c.notFound();
+  if (!canReadLog(user, log)) return forbidden(c);
+  return privatePdf(textPdf(flightRecordLines(log)), flightRecordPdfName(log.id));
 }
 
 async function renderFlightRecord(c: Context<AppEnv>, id: string): Promise<Response> {
