@@ -12,6 +12,7 @@ import { registerAgreement } from "./routes_agreement";
 import { registerResources } from "./routes_resources";
 import { registerTbx } from "./routes_tbx";
 import { registerSchedule } from "./routes_schedule";
+import { WEB_MANIFEST } from "./app_launch";
 import { ORG_NAME, type AppEnv } from "./types";
 import { document, SimpleMessage, TryAgainPage } from "./ui";
 
@@ -19,6 +20,9 @@ export function createApp(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
   app.get("/health", (c) => c.json({ ok: true, service: "firehound-rental" }));
+  app.get("/manifest.webmanifest", (c) =>
+    c.body(WEB_MANIFEST, 200, { "content-type": "application/manifest+json; charset=utf-8", "cache-control": "public, max-age=3600" }),
+  );
 
   app.use("*", async (c, next) => {
     const method = c.req.method;
@@ -118,7 +122,7 @@ export function createApp(): Hono<AppEnv> {
 }
 
 function isPublic(path: string): boolean {
-  return path === "/login" || path === "/setup" || path === "/health" || path.startsWith("/ical/") || path.startsWith("/invite/");
+  return path === "/login" || path === "/setup" || path === "/health" || path === "/manifest.webmanifest" || path.startsWith("/ical/") || path.startsWith("/invite/");
 }
 
 function blocked(c: Context<AppEnv>) {

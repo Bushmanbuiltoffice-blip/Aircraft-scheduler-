@@ -138,7 +138,7 @@ export function SchedulePage(props: {
           ) : null}
         </div>
       ) : (
-        <div class="board-scroll card">
+        <div class="board-scroll card" id="week-board" data-today-index={props.weekDays.indexOf(props.today) >= 0 ? String(props.weekDays.indexOf(props.today)) : undefined}>
           <div class="week-grid">
             <div class="week-row week-head">
               <div class="week-corner">Resource</div>

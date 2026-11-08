@@ -2,8 +2,9 @@ import { env, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { hashPassword, newToken } from "../src/auth";
 import { insertUser } from "../src/db";
-import { scrollToReveal } from "../src/schedule_focus";
-import { addDays, todayInZone } from "../src/time";
+import { launchRedirect } from "../src/app_launch";
+import { scrollToReveal, weekScrollLeft } from "../src/schedule_focus";
+import { addDays, monthGrid, startOfWeek, todayInZone } from "../src/time";
 import type { User } from "../src/types";
 
 const db = () => (env as unknown as { DB: D1Database }).DB;
@@ -89,6 +90,43 @@ describe("schedule opens with today in view", () => {
     expect(1500 + 118).toBeLessThanOrEqual(below.y + 600 + 0.5);
   });
 
+  it("scrolls a later weekday off the Sunday start, and keeps a wide week still", () => {
+    const phone = weekScrollLeft({ todayIndex: 6, viewportWidth: 390, contentWidth: 1080 });
+    expect(phone).toBeGreaterThan(400);
+    const sunday = weekScrollLeft({ todayIndex: 0, viewportWidth: 390, contentWidth: 1080 });
+    expect(sunday).toBe(0);
+    const mid = weekScrollLeft({ todayIndex: 3, viewportWidth: 390, contentWidth: 1080 });
+    expect(mid).toBeGreaterThan(sunday);
+    expect(mid).toBeLessThan(phone);
+    expect(weekScrollLeft({ todayIndex: 5, viewportWidth: 1400, contentWidth: 1080 })).toBe(0);
+  });
+
+  it("uses the Pacific day across midnight, month, and year boundaries", () => {
+    expect(todayInZone(new Date("2026-01-01T07:30:00.000Z"))).toBe("2025-12-31");
+    expect(todayInZone(new Date("2026-01-01T08:30:00.000Z"))).toBe("2026-01-01");
+    expect(todayInZone(new Date("2026-07-15T06:30:00.000Z"))).toBe("2026-07-14");
+    expect(todayInZone(new Date("2026-07-15T07:30:00.000Z"))).toBe("2026-07-15");
+    expect(startOfWeek("2026-01-01")).toBe("2025-12-28");
+    expect(addDays(startOfWeek("2026-01-01"), 4)).toBe("2026-01-01");
+    expect(startOfWeek("2026-11-01")).toBe("2026-11-01");
+    expect(startOfWeek("2026-11-07")).toBe("2026-11-01");
+    const january = monthGrid("2026-01-15").weeks.flat();
+    expect(january[0]).toBe("2025-12-28");
+    expect(january).toContain("2026-01-01");
+    expect(january[0]).not.toBe("2026-01-01");
+  });
+
+  it("sends only a cold installed-app open to the dashboard", () => {
+    expect(launchRedirect({ standalone: true, hasSession: false, path: "/schedule" })).toBe("/");
+    expect(launchRedirect({ standalone: true, hasSession: false, path: "/logs/abc/bill/aircraft" })).toBe("/");
+    expect(launchRedirect({ standalone: true, hasSession: false, path: "/" })).toBeNull();
+    expect(launchRedirect({ standalone: true, hasSession: true, path: "/schedule" })).toBeNull();
+    expect(launchRedirect({ standalone: true, hasSession: true, path: "/resources" })).toBeNull();
+    expect(launchRedirect({ standalone: false, hasSession: false, path: "/schedule" })).toBeNull();
+    expect(launchRedirect({ standalone: true, hasSession: false, path: "/invite/token" })).toBeNull();
+    expect(launchRedirect({ standalone: true, hasSession: false, path: "/setup" })).toBeNull();
+  });
+
   it("marks today on the opened schedule and not on another date or the dashboard", async () => {
     const cookie = await adminCookie();
     await db()
@@ -106,7 +144,14 @@ describe("schedule opens with today in view", () => {
     const later = addDays(today, 21);
     const otherWeek = await (await SELF.fetch(`${BASE}/schedule?view=week&date=${later}`, { headers })).text();
     const otherDay = await (await SELF.fetch(`${BASE}/schedule?view=day&date=${later}`, { headers })).text();
-    const home = await (await SELF.fetch(`${BASE}/`, { headers })).text();
+    const opened = await SELF.fetch(`${BASE}/schedule?view=week&date=${today}`, { headers, redirect: "manual" });
+    expect(opened.status).toBe(200);
+    const homeResponse = await SELF.fetch(`${BASE}/`, { headers, redirect: "manual" });
+    expect(homeResponse.status).toBe(200);
+    const home = await homeResponse.text();
+    const manifest = await (await SELF.fetch(`${BASE}/manifest.webmanifest`)).json() as { start_url: string; display: string };
+    expect(manifest.start_url).toBe("/");
+    expect(manifest.display).toBe("standalone");
     for (const html of [day, week, month]) {
       expect(html).toContain('data-schedule-today="1"');
       expect(html).toContain('src="/schedule-focus.js"');
@@ -118,5 +163,19 @@ describe("schedule opens with today in view", () => {
     expect(home).not.toContain("data-schedule-today");
     expect(home).not.toContain("schedule-focus.js");
     expect(week).toContain(`date=${today}`);
+    const weekStart = startOfWeek(today);
+    const todayIndex = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)).indexOf(today);
+    expect(week).toContain(`id="week-board" data-today-index="${todayIndex}"`);
+    expect(week).toContain(`date=${weekStart}`);
+    const marked = week.slice(week.indexOf('data-schedule-today="1"'));
+    expect(marked.slice(0, 400)).toContain(`date=${today}`);
+    const previous = addDays(weekStart, -7);
+    const previousHtml = await (await SELF.fetch(`${BASE}/schedule?view=week&date=${previous}`, { headers })).text();
+    expect(previousHtml).not.toContain("data-today-index");
+    expect(previousHtml).not.toContain("data-schedule-today");
+    expect(previousHtml).toContain(`date=${previous}`);
+    expect(home).toContain('src="/app-launch.js"');
+    expect(day).toContain('src="/app-launch.js"');
+    expect(home).not.toContain("schedule-focus.js");
   });
 });

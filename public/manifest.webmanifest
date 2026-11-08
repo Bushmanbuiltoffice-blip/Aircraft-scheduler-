@@ -1,0 +1,12 @@
+{
+  "name": "Firehound Rental",
+  "short_name": "Firehound",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#12263a",
+  "theme_color": "#12263a",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

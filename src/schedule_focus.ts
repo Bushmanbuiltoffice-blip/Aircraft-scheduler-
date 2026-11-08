@@ -40,3 +40,20 @@ export function scrollToReveal(input: {
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
+
+/** Width of the sticky resource label on the week board. */
+export const WEEK_LABEL_PX = 150;
+
+/**
+ * Horizontal scroll for a Sunday-start week so weekday index 0–6 is on screen.
+ * A wide viewport that already fits the whole week stays at 0.
+ * Index 0 (Sunday, when that is today) stays at the start. Later weekdays move off that start.
+ */
+export function weekScrollLeft(input: { todayIndex: number; viewportWidth: number; contentWidth: number; labelWidth?: number }): number {
+  if (input.viewportWidth <= 0 || input.contentWidth <= input.viewportWidth + 1) return 0;
+  const label = input.labelWidth ?? WEEK_LABEL_PX;
+  const column = Math.max(0, (input.contentWidth - label) / 7);
+  const targetLeft = label + input.todayIndex * column;
+  const centered = input.todayIndex === 0 ? 0 : targetLeft - (input.viewportWidth - column) / 2;
+  return clamp(centered, 0, input.contentWidth - input.viewportWidth);
+}

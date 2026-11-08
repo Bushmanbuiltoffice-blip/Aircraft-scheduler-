@@ -16,6 +16,18 @@ export function document(node: Child) {
   return html`<!DOCTYPE html>${node}`;
 }
 
+/** Manifest plus the cold-start script. The script does not redirect a normal browser tab. */
+export function AppLaunch() {
+  return (
+    <>
+      <link rel="manifest" href="/manifest.webmanifest" />
+      <meta name="mobile-web-app-capable" content="yes" />
+      <meta name="apple-mobile-web-app-capable" content="yes" />
+      <script src="/app-launch.js"></script>
+    </>
+  );
+}
+
 const NAV = [
   { href: "/", label: "Dashboard" },
   { href: "/schedule", label: "Schedule" },
@@ -51,6 +63,7 @@ export function Layout(props: {
           rel="stylesheet"
         />
         <link rel="stylesheet" href="/app.css" />
+        <AppLaunch />
       </head>
       <body>
         <a class="skip" href="#content">Skip to content</a>
@@ -122,6 +135,7 @@ export function GuestShell(props: { title: string; kicker: string; lede: string;
           rel="stylesheet"
         />
         <link rel="stylesheet" href="/app.css" />
+        <AppLaunch />
       </head>
       <body class="guest-body">
         <div class="login-shell">
@@ -191,6 +205,7 @@ export function SimpleMessage(props: { title: string; message: string }) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>{props.title} · {ORG_NAME}</title>
         <link rel="stylesheet" href="/app.css" />
+        <AppLaunch />
       </head>
       <body>
         <main class="wrap narrow">
@@ -212,6 +227,7 @@ export function TryAgainPage(props: { href: string }) {
         <meta name="robots" content="noindex" />
         <title>Please try again · {ORG_NAME}</title>
         <link rel="stylesheet" href="/app.css" />
+        <AppLaunch />
       </head>
       <body>
         <main class="wrap narrow">
