@@ -2,7 +2,6 @@
 import { BILLED_OUTSIDE_LABEL, formatFuel, formatGroundHours, formatHours, formatMeter, formatOil } from "./format";
 import { formatDateTime } from "./time";
 import type { FlightLogView } from "./types";
-import { flightRecordPdfName } from "./printable";
 import { Layout, type Viewer } from "./ui";
 
 const NOT_RECORDED = "Not recorded";
@@ -58,10 +57,11 @@ export function FlightRecordPage(props: { viewer: Viewer; usingDevSecret: boolea
         </p>
         <p class="no-print bill-actions">
           <button class="btn browser-print" id="print-record" type="button">Print</button>
-          <a class="btn save-pdf" id="save-pdf" href={`/logs/${log.id}/record.pdf`} download={flightRecordPdfName(log.id)}>Save PDF</a>
+          <a class="btn save-pdf" id="save-pdf" href={`/logs/${log.id}/record.pdf`}>Save PDF</a>
           <a class="btn secondary" href={`/logs/${log.id}`}>Back to this flight</a>
         </p>
-        <script src="/bill-print.js"></script>
+        <p id="print-status" class="no-print alert" role="status" hidden></p>
+        <script src="/bill-print.js?v=4"></script>
       </article>
     </Layout>
   );

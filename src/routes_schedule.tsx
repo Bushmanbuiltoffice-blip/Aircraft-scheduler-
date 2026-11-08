@@ -738,7 +738,7 @@ function privatePdf(bytes: Uint8Array, filename: string): Response {
   return new Response(bytes, {
     headers: {
       "content-type": "application/pdf",
-      "content-disposition": `attachment; filename="${filename}"`,
+      "content-disposition": `inline; filename="${filename}"`,
       "cache-control": "private, no-store",
       "x-content-type-options": "nosniff",
     },

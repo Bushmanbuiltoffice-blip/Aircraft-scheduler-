@@ -8,58 +8,44 @@ function standaloneApp() {
 }
 
 function holdPdf() {
-  try { sessionStorage.setItem("fh_pdf_hold", String(Date.now())); } catch (error) { /* the download still starts */ }
+  try { sessionStorage.setItem("fh_pdf_hold", String(Date.now())); } catch (error) { /* the link still opens */ }
 }
 
-function saveBlob(blob, name) {
-  var url = URL.createObjectURL(blob);
-  var anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = name;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
+function showPrintStatus(message) {
+  var el = document.getElementById("print-status");
+  if (!el) return;
+  el.hidden = false;
+  el.textContent = message;
 }
 
-for (const id of ["print-bill", "print-record"]) {
-  var button = document.getElementById(id);
-  if (!button) continue;
-  if (standaloneApp()) button.hidden = true;
+function bindPrint(button) {
   button.addEventListener("click", function () {
     holdPdf();
-    if (standaloneApp()) return;
-    window.print();
+    var fired = false;
+    function mark() { fired = true; }
+    window.addEventListener("beforeprint", mark);
+    try {
+      window.print();
+    } catch (error) {
+      window.removeEventListener("beforeprint", mark);
+      showPrintStatus("Print did not open (" + (error && error.name ? error.name : "error") + "). Save PDF opens this document. If a share sheet appears, choose Print. The file stays on this site.");
+      return;
+    }
+    window.setTimeout(function () {
+      window.removeEventListener("beforeprint", mark);
+      if (!fired && standaloneApp()) {
+        showPrintStatus("Print did not open. Save PDF opens this document. If a share sheet appears, choose Print. The file stays on this site.");
+      }
+    }, 700);
   });
 }
 
-document.querySelectorAll("a.save-pdf").forEach(function (link) {
-  link.addEventListener("click", function (event) {
-    holdPdf();
-    if (!standaloneApp() || typeof navigator.share !== "function") return;
-    event.preventDefault();
-    var name = link.getAttribute("download") || "document.pdf";
-    fetch(link.href, { credentials: "same-origin" }).then(function (response) {
-      if (!response.ok) throw new Error("pdf");
-      return response.blob();
-    }).then(function (blob) {
-      var file = new File([blob], name, { type: "application/pdf" });
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        return navigator.share({ files: [file], title: name });
-      }
-      saveBlob(blob, name);
-    }).catch(function (error) {
-      if (error && error.name === "AbortError") return;
-      saveBlobFallback(link);
-    });
-  });
-});
+var printBill = document.getElementById("print-bill");
+var printRecord = document.getElementById("print-record");
+if (printBill) bindPrint(printBill);
+if (printRecord) bindPrint(printRecord);
 
-function saveBlobFallback(link) {
-  var anchor = document.createElement("a");
-  anchor.href = link.href;
-  anchor.download = link.getAttribute("download") || "";
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
+var saveLinks = document.querySelectorAll("a.save-pdf");
+for (var i = 0; i < saveLinks.length; i++) {
+  saveLinks[i].addEventListener("click", function () { holdPdf(); });
 }

@@ -2,6 +2,7 @@ import { env, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { hashPassword, newToken } from "../src/auth";
 import { insertUser } from "../src/db";
+import { printFallbackMessage, savePdfFollowsLink } from "../src/print_action";
 import { pdfText, textPdf } from "../src/text_pdf";
 import { addDays, todayInZone } from "../src/time";
 import type { User } from "../src/types";
@@ -77,6 +78,14 @@ describe("downloadable bill and flight-record PDFs", () => {
     expect(text).toContain("Total: $217.00");
     expect(text).toContain("Paid by cash.");
     expect(text).toContain("%%EOF");
+    const start = text.indexOf("startxref\n");
+    const xrefAt = Number(text.slice(start + "startxref\n".length).split("\n")[0]);
+    expect(text.slice(xrefAt, xrefAt + 4)).toBe("xref");
+    expect(savePdfFollowsLink()).toBe(true);
+    expect(printFallbackMessage({ standalone: true, beforePrintFired: false })).toContain("Print did not open");
+    expect(printFallbackMessage({ standalone: true, beforePrintFired: false, errorName: "NotAllowedError" })).toContain("NotAllowedError");
+    expect(printFallbackMessage({ standalone: false, beforePrintFired: false })).toBeNull();
+    expect(printFallbackMessage({ standalone: true, beforePrintFired: true })).toBeNull();
   });
 
   it("serves private PDFs for both bills and the flight record without changing the flight", async () => {
@@ -121,6 +130,7 @@ describe("downloadable bill and flight-record PDFs", () => {
 
     const aircraft = await get(`/logs/${id}/bill/aircraft.pdf`, cookie);
     expect(aircraft.headers.get("content-type")).toContain("application/pdf");
+    expect(aircraft.headers.get("content-disposition")).toContain("inline;");
     expect(aircraft.headers.get("content-disposition")).toContain(`FHR-A-${id}.pdf`);
     expect(aircraft.headers.get("cache-control")).toBe("private, no-store");
     const aircraftText = pdfText(new Uint8Array(await aircraft.arrayBuffer()));
@@ -145,8 +155,12 @@ describe("downloadable bill and flight-record PDFs", () => {
 
     const page = await (await get(`/logs/${id}/bill/aircraft`, cookie)).text();
     expect(page).toContain(`href="/logs/${id}/bill/aircraft.pdf"`);
+    expect(page).toContain(`href="/logs/${id}/bill/aircraft.pdf"`);
     expect(page).toContain('id="save-pdf"');
     expect(page).toContain('id="print-bill"');
+    expect(page).toContain('id="print-status"');
+    expect(page).toContain("/bill-print.js?v=4");
+    expect(page).not.toContain("preventDefault");
 
     const record = await get(`/logs/${id}/record.pdf`, cookie);
     const recordText = pdfText(new Uint8Array(await record.arrayBuffer()));

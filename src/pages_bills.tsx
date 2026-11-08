@@ -12,7 +12,6 @@ import {
   paymentMethodLabel,
   type BillPaymentMethod,
 } from "./bills";
-import { aircraftPdfName, instructorPdfName } from "./printable";
 import { formatGroundHours, formatHours, formatMeter, formatMoney, rateLabel } from "./format";
 import { formatDateTime } from "./time";
 import type { FlightLogView } from "./types";
@@ -29,7 +28,6 @@ export function AircraftBillPage(props: { viewer: Viewer; usingDevSecret: boolea
         customer={log.pilotName}
         when={formatDateTime(log.createdAt)}
         pdfHref={`/logs/${log.id}/bill/aircraft.pdf`}
-        pdfName={aircraftPdfName(log.id)}
         payment={
           <BillPayment
             logId={log.id}
@@ -65,7 +63,6 @@ export function InstructorBillPage(props: { viewer: Viewer; usingDevSecret: bool
         customer={log.pilotName}
         when={formatDateTime(log.createdAt)}
         pdfHref={`/logs/${log.id}/bill/instructor.pdf`}
-        pdfName={instructorPdfName(log.id)}
         payment={
           <BillPayment
             logId={log.id}
@@ -142,7 +139,6 @@ function BillSheet(props: {
   customer: string;
   when: string;
   pdfHref?: string;
-  pdfName?: string;
   payment?: Child;
   children?: Child;
 }) {
@@ -161,10 +157,11 @@ function BillSheet(props: {
       {props.payment}
       <p class="no-print bill-actions">
         <button class="btn browser-print" id="print-bill" type="button">Print</button>
-        {props.pdfHref ? <a class="btn save-pdf" id="save-pdf" href={props.pdfHref} download={props.pdfName}>Save PDF</a> : null}
+        {props.pdfHref ? <a class="btn save-pdf" id="save-pdf" href={props.pdfHref}>Save PDF</a> : null}
         <a class="btn secondary" href="/logs">Back to flight logs</a>
       </p>
-      <script src="/bill-print.js"></script>
+      <p id="print-status" class="no-print alert" role="status" hidden></p>
+      <script src="/bill-print.js?v=4"></script>
     </article>
   );
 }
