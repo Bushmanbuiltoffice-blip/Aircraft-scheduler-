@@ -590,7 +590,10 @@ td.owed { color: #6d4b00; font-weight: 600; }
 .bill-facts { margin: 1rem 0; }
 .bill-facts div { display: grid; grid-template-columns: 9rem 1fr; gap: 0.4rem 1rem; padding: 0.35rem 0; border-top: 1px solid var(--line); }
 .bill-total { display: flex; justify-content: space-between; align-items: baseline; font-size: 1.25rem; margin-top: 0.8rem; }
-.bill-pay { margin-top: 1rem; }
+.bill-pay, .bill-paid-mark, .bill-coverage { margin-top: 0.8rem; }
+.bill-paid-mark { font-weight: 700; }
+.bill-pay-form fieldset { border: 0; margin: 0.4rem 0 0.8rem; padding: 0; }
+.bill-pay-form label { display: flex; gap: 0.45rem; align-items: center; margin: 0.35rem 0; }
 .bill-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
 @media (max-width: 640px) {
   .bill-facts div { grid-template-columns: 1fr; gap: 0.1rem; }

@@ -3,26 +3,40 @@ import type { Child } from "hono/jsx";
 import {
   BILL_BUSINESS_NAME,
   BILL_PAYMENT_NOTE,
+  BILL_PAYMENT_QUESTION,
   aircraftBillId,
   canPrintAircraftBill,
   canPrintInstructorBill,
   instructorBillId,
   instructorBillTotalCents,
+  paymentMethodLabel,
+  type BillPaymentMethod,
 } from "./bills";
 import { formatGroundHours, formatHours, formatMeter, formatMoney, rateLabel } from "./format";
 import { formatDateTime } from "./time";
 import type { FlightLogView } from "./types";
 import { Layout, type Viewer } from "./ui";
 
-export function AircraftBillPage(props: { viewer: Viewer; usingDevSecret: boolean; log: FlightLogView }) {
+export function AircraftBillPage(props: { viewer: Viewer; usingDevSecret: boolean; log: FlightLogView; canMark: boolean; notice?: string | null; error?: string | null }) {
   const log = props.log;
   return (
-    <Layout title={`Aircraft bill ${log.tailNumber}`} user={props.viewer} path="/logs" usingDevSecret={props.usingDevSecret}>
+    <Layout title={`Aircraft bill ${log.tailNumber}`} user={props.viewer} path="/logs" usingDevSecret={props.usingDevSecret} notice={props.notice}>
+      {props.error ? <p class="alert" role="alert">{props.error}</p> : null}
       <BillSheet
         kind="Aircraft rental"
         billId={aircraftBillId(log.id)}
         customer={log.pilotName}
         when={formatDateTime(log.createdAt)}
+        payment={
+          <BillPayment
+            logId={log.id}
+            bill="aircraft"
+            method={log.aircraftPaymentMethod}
+            rentalPaid={log.paid}
+            canMark={props.canMark}
+            covers="This is the aircraft bill only. It does not mark the instructor bill."
+          />
+        }
       >
         <div><dt>Aircraft</dt><dd>{log.tailNumber} · {log.make} {log.model}</dd></div>
         <div><dt>Hobbs</dt><dd>{formatMeter(log.hobbsOut)} → {formatMeter(log.hobbsIn)} · {formatHours(log.flightHours)} hr</dd></div>
@@ -34,15 +48,29 @@ export function AircraftBillPage(props: { viewer: Viewer; usingDevSecret: boolea
   );
 }
 
-export function InstructorBillPage(props: { viewer: Viewer; usingDevSecret: boolean; log: FlightLogView }) {
+export function InstructorBillPage(props: { viewer: Viewer; usingDevSecret: boolean; log: FlightLogView; canMark: boolean; notice?: string | null; error?: string | null }) {
   const log = props.log;
+  const covers = log.groundCostCents == null
+    ? "This instructor bill covers flight instruction. Ground instruction was not recorded, so it is not charged on this bill."
+    : "This instructor bill covers flight instruction and ground instruction. One cash or check choice pays this whole instructor bill.";
   return (
-    <Layout title="Instructor bill" user={props.viewer} path="/logs" usingDevSecret={props.usingDevSecret}>
+    <Layout title="Instructor bill" user={props.viewer} path="/logs" usingDevSecret={props.usingDevSecret} notice={props.notice}>
+      {props.error ? <p class="alert" role="alert">{props.error}</p> : null}
       <BillSheet
         kind="Instruction"
         billId={instructorBillId(log.id)}
         customer={log.pilotName}
         when={formatDateTime(log.createdAt)}
+        payment={
+          <BillPayment
+            logId={log.id}
+            bill="instructor"
+            method={log.instructorPaymentMethod}
+            rentalPaid={log.paid}
+            canMark={props.canMark}
+            covers={covers}
+          />
+        }
       >
         <div><dt>Instructor</dt><dd>{log.instructorName ?? "Name not on this flight record"}</dd></div>
         <div><dt>Flight instruction</dt><dd>{formatHours(log.instructorHours)} hr × {formatMoney(log.instructorRateCents)}/hr = {formatMoney(log.instructorCostCents)}</dd></div>
@@ -70,11 +98,45 @@ export function NoBillPage(props: { viewer: Viewer; usingDevSecret: boolean; tit
   );
 }
 
+function BillPayment(props: {
+  logId: string;
+  bill: "aircraft" | "instructor";
+  method: BillPaymentMethod | null;
+  rentalPaid: boolean;
+  canMark: boolean;
+  covers: string;
+}) {
+  return (
+    <>
+      <p class="bill-paid-mark" id="bill-payment-mark">{paymentMethodLabel(props.method, props.rentalPaid)}</p>
+      <p class="bill-coverage" id="bill-coverage">{props.covers}</p>
+      <p class="bill-pay">{BILL_PAYMENT_NOTE}</p>
+      {props.canMark ? (
+        <form method="post" action={`/logs/${props.logId}/bill/${props.bill}/payment`} class="no-print bill-pay-form" id="bill-pay-form">
+          <fieldset>
+            <legend id="pay-question">{BILL_PAYMENT_QUESTION}</legend>
+            <label><input type="radio" name="method" value="cash" required /> Cash</label>
+            <label><input type="radio" name="method" value="check" required /> Check</label>
+          </fieldset>
+          <button class="btn" type="submit" name="action" value="record">Record payment</button>
+          <button class="btn secondary" type="reset">Cancel</button>
+        </form>
+      ) : null}
+      {props.canMark && props.method ? (
+        <form method="post" action={`/logs/${props.logId}/bill/${props.bill}/payment`} class="no-print">
+          <button class="btn secondary" type="submit" name="action" value="clear">Mark this bill unpaid</button>
+        </form>
+      ) : null}
+    </>
+  );
+}
+
 function BillSheet(props: {
   kind: string;
   billId: string;
   customer: string;
   when: string;
+  payment?: Child;
   children?: Child;
 }) {
   return (
@@ -89,7 +151,7 @@ function BillSheet(props: {
         <div><dt>Date</dt><dd>{props.when}</dd></div>
         {props.children}
       </dl>
-      <p class="bill-pay">{BILL_PAYMENT_NOTE}</p>
+      {props.payment}
       <p class="no-print bill-actions">
         <button class="btn" id="print-bill" type="button">Print or save PDF</button>
         <a class="btn secondary" href="/logs">Back to flight logs</a>

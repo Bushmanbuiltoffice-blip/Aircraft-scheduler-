@@ -46,16 +46,12 @@ export function PaymentControl(props: { log: FlightLogView; admin: boolean; retu
   return (
     <span class="pay-control">
       <PaidBadge log={log} />
-      {props.admin && state !== "outside" ? (
+      {props.admin && state === "paid" ? (
         <form method="post" action={`/logs/${log.id}/paid`} class="pay-form">
-          <input type="hidden" name="paid" value={state === "paid" ? "0" : "1"} />
+          <input type="hidden" name="paid" value="0" />
           <input type="hidden" name="next" value={props.returnTo} />
-          <button
-            class={`pay-toggle ${state === "paid" ? "to-unpaid" : "to-paid"}`}
-            type="submit"
-            aria-label={`${state === "paid" ? "Mark unpaid" : "Mark paid"}: ${log.pilotName}, ${log.tailNumber}, ${formatDateTime(log.createdAt)}`}
-          >
-            {state === "paid" ? "Mark unpaid" : "Mark paid"}
+          <button class="pay-toggle to-unpaid" type="submit" aria-label={`Mark unpaid: ${log.pilotName}, ${log.tailNumber}, ${formatDateTime(log.createdAt)}`}>
+            Mark unpaid
           </button>
         </form>
       ) : null}

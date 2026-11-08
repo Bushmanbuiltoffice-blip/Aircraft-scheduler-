@@ -150,28 +150,28 @@ describe("Paid / unpaid on rentals", () => {
     const html = await (await get("/logs", await login(s.admin.email))).text();
     expect(html).toContain('<span class="pay-badge pay-unpaid">Unpaid</span>');
     expect(html).toContain('<span class="pay-badge pay-outside">Paid outside app</span>');
-    expect(html).toContain(`action="/logs/${s.rental}/paid"`);
+    expect(html).not.toContain(">Mark paid</button>");
     expect(html).not.toContain(`action="/logs/${s.historical}/paid"`);
   });
 
   for (const role of ["admin", "instructor"] as const) {
-    it(`${role}s get a one-tap toggle that persists, records who, and shows to everyone`, async () => {
+    it(`${role}s record cash on the aircraft bill, which persists, records who, and shows to everyone`, async () => {
       const s = await setup();
       const actor = role === "admin" ? s.admin : s.instructor;
       const cookie = await login(actor.email);
       const list = await (await get("/logs", cookie)).text();
-      expect(list).toContain(`action="/logs/${s.rental}/paid"`);
-      expect(list).toContain(">Mark paid</button>");
-      const marked = await post(`/logs/${s.rental}/paid`, { paid: "1", next: "/logs#x" }, cookie);
+      expect(list).not.toContain(">Mark paid</button>");
+      const bill = await (await get(`/logs/${s.rental}/bill/aircraft`, cookie)).text();
+      expect(bill).toContain("Was this paid by cash or by check?");
+      expect(bill).not.toContain("checked");
+      const marked = await post(`/logs/${s.rental}/bill/aircraft/payment`, { action: "record", method: "cash" }, cookie);
       expect(marked.status).toBe(303);
-      expect(marked.headers.get("location")).toBe("/logs#x");
       const row = await paidRow(s.rental);
       expect(row?.paid).toBe(1);
       expect(row?.paid_by).toBe(actor.id);
       expect(row?.paid_at).toBeTruthy();
       expect(row?.total_cost_cents).toBe(16275);
-      // Posting the same value twice keeps it paid (no accidental flip).
-      await post(`/logs/${s.rental}/paid`, { paid: "1" }, cookie);
+      await post(`/logs/${s.rental}/bill/aircraft/payment`, { action: "record", method: "cash" }, cookie);
       expect((await paidRow(s.rental))?.paid).toBe(1);
 
       const renterCookie = await login(s.renter.email);
@@ -196,8 +196,10 @@ describe("Paid / unpaid on rentals", () => {
       expect(list).toContain("pay-badge pay-unpaid");
       expect(list).not.toContain('class="pay-form"');
       const own = person.id === s.renter.id ? s.rental : s.studentRental;
-      const tried = await post(`/logs/${own}/paid`, { paid: "1" }, cookie);
+      const tried = await post(`/logs/${own}/bill/aircraft/payment`, { action: "record", method: "cash" }, cookie);
       expect(tried.status).toBe(403);
+      const legacy = await post(`/logs/${own}/paid`, { paid: "1" }, cookie);
+      expect(legacy.status).toBe(403);
       expect((await paidRow(own))?.paid).toBe(0);
     }
   });
@@ -205,34 +207,35 @@ describe("Paid / unpaid on rentals", () => {
   it("rejects toggles without a CSRF token or from another site, and never changes billed-outside imports", async () => {
     const s = await setup();
     const cookie = await login(s.admin.email);
-    const cross = await SELF.fetch(`${BASE}/logs/${s.rental}/paid`, {
+    const cross = await SELF.fetch(`${BASE}/logs/${s.rental}/bill/aircraft/payment`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded", origin: "https://evil.example", cookie },
-      body: "paid=1",
+      body: "action=record&method=cash",
       redirect: "manual",
     });
     expect(cross.status).toBe(403);
-    const noToken = await SELF.fetch(`${BASE}/logs/${s.rental}/paid`, {
+    const noToken = await SELF.fetch(`${BASE}/logs/${s.rental}/bill/aircraft/payment`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded", cookie },
-      body: "paid=1",
+      body: "action=record&method=cash",
       redirect: "manual",
     });
     expect(noToken.status).toBe(403);
+    const missingMethod = await post(`/logs/${s.rental}/paid`, { paid: "1" }, cookie);
+    expect(missingMethod.status).toBe(422);
     expect((await paidRow(s.rental))?.paid).toBe(0);
-    const imported = await post(`/logs/${s.historical}/paid`, { paid: "0" }, cookie);
+    const imported = await post(`/logs/${s.historical}/bill/aircraft/payment`, { action: "record", method: "check" }, cookie);
     expect(imported.status).toBe(409);
     const row = await paidRow(s.historical);
     expect(row).toMatchObject({ paid: 0, paid_at: null, total_cost_cents: 0, billing_status: "external" });
-    // Unsafe return targets fall back to the log.
-    const offsite = await post(`/logs/${s.rental}/paid`, { paid: "1", next: "//evil.example/x" }, cookie);
+    const offsite = await post(`/logs/${s.rental}/paid`, { paid: "0", next: "//evil.example/x" }, cookie);
     expect(offsite.headers.get("location")).toBe(`/logs/${s.rental}`);
   });
 
   it("shows the badge wherever the amount shows, and outstanding equals the sum of unpaid", async () => {
     const s = await setup();
     const cookie = await login(s.admin.email);
-    await post(`/logs/${s.studentRental}/paid`, { paid: "1" }, cookie);
+    await post(`/logs/${s.studentRental}/bill/aircraft/payment`, { action: "record", method: "check" }, cookie);
     const dash = await (await get("/", cookie)).text();
     expect(dash).toContain("pay-badge pay-unpaid");
     expect(dash).toContain("pay-badge pay-paid");
@@ -242,7 +245,7 @@ describe("Paid / unpaid on rentals", () => {
     const reservation = await db().prepare("SELECT reservation_id FROM flight_logs WHERE id = ?").bind(s.rental).first<string>("reservation_id");
     const booking = await (await get(`/reservations/${reservation}`, cookie)).text();
     expect(booking).toContain("pay-badge pay-unpaid");
-    expect(booking).toContain(`name="next" value="/reservations/${reservation}"`);
+    expect(booking).not.toContain(">Mark paid</button>");
     const person = await (await get(`/pilots/${s.renter.id}`, cookie)).text();
     expect(person).toContain("pay-badge pay-unpaid");
     expect(person).toContain("$162.75 billed · $0.00 paid · $162.75 unpaid (1 rental)");

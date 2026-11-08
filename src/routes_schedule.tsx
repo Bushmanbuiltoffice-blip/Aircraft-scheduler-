@@ -3,7 +3,7 @@ import type { Context, Hono } from "hono";
 import { RESOURCE_TONES, buildDayBoard, buildMonthCalendar, buildWeekBoard, type BoardEvent, type BoardResource, type MonthEntry } from "./board";
 import { booksOnlySelf, canBookDespiteEligibility, computeFlightCost, eligibilityAllowsBooking, medicalWaivedByInstructor, meterWarnings, pilotEligibility, soloCheckoutNeedsInsurance, validateReservationWindow } from "./domain";
 import { agreementAllowsCheckout, agreementCheckoutMessage, agreementStatus, getAgreement } from "./agreement";
-import { canAdjustGround, canPrintAircraftBill, canPrintInstructorBill, externalBillReason, groundInstructionCents, instructorBillBlockedReason, parseGroundHours } from "./bills";
+import { canAdjustGround, canPrintAircraftBill, canPrintInstructorBill, externalBillReason, groundInstructionCents, instructorBillBlockedReason, parseBillPaymentMethod, parseGroundHours } from "./bills";
 import { AircraftBillPage, InstructorBillPage, NoBillPage } from "./pages_bills";
 import { ensureInsuranceExpiration } from "./documents";
 import { createEmailSender, reservationMessage, safeSend } from "./email";
@@ -12,7 +12,8 @@ import { buildIcal, type IcalEvent } from "./ical";
 import { STUDENT_SOLO_WARNING, clashMessage, pageNotice, soloInsuranceMissingMessage } from "./copy";
 import {
   billingByPilot,
-  setFlightLogPaid,
+  clearRentalPayment,
+  saveBillPaymentMethod,
   updateFlightLogOil,
   updateFlightLogFuel,
   updateFlightLogGround,
@@ -440,9 +441,64 @@ export function registerSchedule(app: Hono<AppEnv>): void {
         409,
       );
     }
-    const paid = data.paid === "1" ? true : data.paid === "0" ? false : !log.paid;
-    await setFlightLogPaid(c.env.DB, { id, paid, by: user.id });
+    if (data.paid !== "0") {
+      return c.html(
+        document(<SimpleMessage title="Choose cash or check" message="Mark the aircraft bill or the instructor bill paid, and choose cash or check on that bill. This page does not pick a method." />),
+        422,
+      );
+    }
+    await clearRentalPayment(c.env.DB, id);
     return c.redirect(back, 303);
+  });
+
+  app.post("/logs/:id/bill/:bill/payment", async (c) => {
+    const user = mustUser(c);
+    if (!canMarkPaid(user.role)) return forbidden(c);
+    const id = c.req.param("id");
+    const bill = c.req.param("bill");
+    if (bill !== "aircraft" && bill !== "instructor") return c.notFound();
+    const log = await getFlightLog(c.env.DB, id);
+    if (!log) return c.notFound();
+    const data = await readForm(c);
+    const back = bill === "aircraft" ? `/logs/${id}/bill/aircraft` : `/logs/${id}/bill/instructor`;
+    if (log.billingStatus === "external") {
+      return c.html(
+        document(<SimpleMessage title="Billed outside the app" message="This historical flight was paid outside the app. Its bills cannot be marked here." />),
+        409,
+      );
+    }
+    if (data.action === "clear") {
+      const cleared = await saveBillPaymentMethod(c.env.DB, {
+        id,
+        bill,
+        method: null,
+        by: user.id,
+        instructorBill: canPrintInstructorBill(log),
+      });
+      if (!cleared) return renderBillPaymentError(c, id, bill, "That bill could not be marked unpaid.");
+      return c.redirect(`${back}?notice=bill-unpaid`, 303);
+    }
+    if (data.action !== "record") {
+      return renderBillPaymentError(c, id, bill, "Choose cash or check before recording payment.");
+    }
+    const method = parseBillPaymentMethod(data.method);
+    if (!method) {
+      return renderBillPaymentError(c, id, bill, "Choose cash or check. The bill was not marked paid.");
+    }
+    const saved = await saveBillPaymentMethod(c.env.DB, {
+      id,
+      bill,
+      method,
+      by: user.id,
+      instructorBill: canPrintInstructorBill(log),
+    });
+    if (!saved) {
+      return c.html(
+        document(<SimpleMessage title="Bill not saved" message={bill === "instructor" ? "There is no instructor bill on this flight." : "That bill could not be saved."} />),
+        422,
+      );
+    }
+    return c.redirect(`${back}?notice=bill-paid-${method}`, 303);
   });
 
   app.get("/ical/:token", async (c) => {
@@ -670,7 +726,7 @@ async function privateHtml(body: Response | Promise<Response>): Promise<Response
   return response;
 }
 
-async function renderAircraftBill(c: Context<AppEnv>, id: string): Promise<Response> {
+async function renderAircraftBill(c: Context<AppEnv>, id: string, error: string | null = null): Promise<Response> {
   const user = mustUser(c);
   const log = await getFlightLog(c.env.DB, id);
   if (!log) return c.notFound();
@@ -682,11 +738,18 @@ async function renderAircraftBill(c: Context<AppEnv>, id: string): Promise<Respo
     )));
   }
   return privateHtml(c.html(document(
-    <AircraftBillPage viewer={viewerOf(user)} usingDevSecret={c.get("usingDevSecret")} log={log} />,
-  )));
+    <AircraftBillPage
+      viewer={viewerOf(user)}
+      usingDevSecret={c.get("usingDevSecret")}
+      log={log}
+      canMark={canMarkPaid(user.role)}
+      notice={pageNotice(c.req.query("notice"))}
+      error={error}
+    />,
+  ), error ? 422 : 200));
 }
 
-async function renderInstructorBill(c: Context<AppEnv>, id: string): Promise<Response> {
+async function renderInstructorBill(c: Context<AppEnv>, id: string, error: string | null = null): Promise<Response> {
   const user = mustUser(c);
   const log = await getFlightLog(c.env.DB, id);
   if (!log) return c.notFound();
@@ -698,8 +761,19 @@ async function renderInstructorBill(c: Context<AppEnv>, id: string): Promise<Res
     )));
   }
   return privateHtml(c.html(document(
-    <InstructorBillPage viewer={viewerOf(user)} usingDevSecret={c.get("usingDevSecret")} log={log} />,
-  )));
+    <InstructorBillPage
+      viewer={viewerOf(user)}
+      usingDevSecret={c.get("usingDevSecret")}
+      log={log}
+      canMark={canMarkPaid(user.role)}
+      notice={pageNotice(c.req.query("notice"))}
+      error={error}
+    />,
+  ), error ? 422 : 200));
+}
+
+function renderBillPaymentError(c: Context<AppEnv>, id: string, bill: "aircraft" | "instructor", message: string): Promise<Response> {
+  return bill === "aircraft" ? renderAircraftBill(c, id, message) : renderInstructorBill(c, id, message);
 }
 
 async function renderLog(c: Context<AppEnv>, id: string, error: string | null): Promise<Response> {

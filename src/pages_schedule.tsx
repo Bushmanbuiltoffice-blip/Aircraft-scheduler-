@@ -63,7 +63,7 @@ export function SchedulePage(props: {
       ) : props.lanes.length === 0 ? (
         <p class="card card-pad">Nothing to put on this board yet. Add an aircraft{props.board === "instructors" ? " and an instructor" : ""} first.</p>
       ) : props.view === "day" ? (
-        <div class="board-scroll card">
+        <div class="board-scroll card" data-schedule-today={props.anchor === props.today && props.nowPct == null ? "1" : undefined} tabindex={props.anchor === props.today && props.nowPct == null ? -1 : undefined}>
           <div class="day-head">
             <div class="gutter-spacer"></div>
             <div class="head-row">
@@ -89,7 +89,7 @@ export function SchedulePage(props: {
               {props.nowPct != null ? <i class="now-flag" style={`top:${props.nowPct}%`}></i> : null}
             </div>
             <div class="lane-row">
-              {props.lanes.map((lane) => (
+              {props.lanes.map((lane, laneIndex) => (
                 <div class={`lane${lane.grounded ? " grounded" : ""}`}>
                   {lane.grounded || props.anchor < props.today
                     ? null
@@ -105,7 +105,7 @@ export function SchedulePage(props: {
                           </a>
                         ),
                       )}
-                  {props.nowPct != null ? <i class="now-line" style={`top:${props.nowPct}%`}></i> : null}
+                  {props.nowPct != null ? <i class="now-line" data-schedule-today={laneIndex === 0 ? "1" : undefined} tabindex={laneIndex === 0 ? -1 : undefined} style={`top:${props.nowPct}%`}></i> : null}
                   {lane.blocks.map((block) => (
                     <a
                       class={`block ${block.className}`}
@@ -143,7 +143,7 @@ export function SchedulePage(props: {
             <div class="week-row week-head">
               <div class="week-corner">Resource</div>
               {props.weekDays.map((day) => (
-                <div class={`week-day${day === props.today ? " today" : ""}`}>
+                <div class={`week-day${day === props.today ? " today" : ""}`} data-schedule-today={day === props.today ? "1" : undefined} tabindex={day === props.today ? -1 : undefined}>
                   <a href={scheduleHref("day", props.board, day)}>{formatDayLabel(day)}</a>
                 </div>
               ))}
@@ -181,6 +181,7 @@ export function SchedulePage(props: {
           </div>
         </div>
       )}
+      <script src="/schedule-focus.js"></script>
       <p class="legend">
         <span class="pill scheduled">Scheduled</span>
         <span class="pill out">Checked out</span>
@@ -201,7 +202,7 @@ function MonthGrid(props: { weeks: MonthDay[][]; today: string; board: string })
           <div class="month-dow" aria-hidden="true">{label}</div>
         ))}
         {props.weeks.flat().map((cell) => (
-          <div class={`month-cell${cell.inMonth ? "" : " outside"}${cell.day === props.today ? " today" : ""}${cell.day < props.today ? " past" : " bookable"}`}>
+          <div class={`month-cell${cell.inMonth ? "" : " outside"}${cell.day === props.today ? " today" : ""}${cell.day < props.today ? " past" : " bookable"}`} data-schedule-today={cell.day === props.today ? "1" : undefined} tabindex={cell.day === props.today ? -1 : undefined}>
             {cell.day < props.today ? null : (
               <a class="month-add" href={newReservationHref(cell.day)} aria-label={`New reservation on ${formatLongDay(cell.day)}`}>
                 <span aria-hidden="true">+</span>

@@ -4,6 +4,22 @@ import type { FlightLogView } from "./types";
 
 export const BILL_BUSINESS_NAME = "Fire Hound Rental";
 export const BILL_PAYMENT_NOTE = "Payment is cash or check only.";
+export const BILL_PAYMENT_QUESTION = "Was this paid by cash or by check?";
+
+export type BillPaymentMethod = "cash" | "check";
+
+/** Exact cash or check only. Blank and every other value are rejected. */
+export function parseBillPaymentMethod(value: string | undefined): BillPaymentMethod | null {
+  if (value === "cash" || value === "check") return value;
+  return null;
+}
+
+export function paymentMethodLabel(method: BillPaymentMethod | null, rentalPaid: boolean): string {
+  if (method === "cash") return "Paid by cash.";
+  if (method === "check") return "Paid by check.";
+  if (rentalPaid) return "This rental was marked paid. Cash or check was not recorded for this bill.";
+  return "Not paid.";
+}
 
 export type BillKind = "aircraft" | "instructor";
 

@@ -145,7 +145,11 @@ export interface FlightLog {
   guestInstructorName: string | null;
   billingStatus: BillingStatus;
   billingNote: string | null;
-  /** In-app rentals only. Admins toggle this; new rentals start unpaid. */
+  /** Cash or check saved on the aircraft bill. Null means no choice has been recorded. */
+  aircraftPaymentMethod: "cash" | "check" | null;
+  /** Cash or check saved on the instructor bill, which includes ground. Null means no choice. */
+  instructorPaymentMethod: "cash" | "check" | null;
+  /** In-app rentals only. Admins and instructors mark bills paid; new rentals start unpaid. */
   paid: boolean;
   paidAt: string | null;
   paidBy: string | null;

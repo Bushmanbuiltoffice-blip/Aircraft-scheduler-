@@ -986,7 +986,8 @@ const FLIGHT_LOG_SELECT = `
   f.hobbs_out, f.hobbs_in, f.tach_out, f.tach_in, f.flight_hours,
   f.aircraft_rate_cents, f.aircraft_cost_cents, f.instructor_rate_cents,
   f.instructor_hours, f.instructor_cost_cents, f.total_cost_cents, f.rate_basis, f.created_at,
-  f.ground_hours, f.ground_rate_cents, f.ground_cost_cents, f.aircraft_paid, f.instructor_paid, f.maintenance_flight,
+  f.ground_hours, f.ground_rate_cents, f.ground_cost_cents, f.aircraft_payment_method, f.instructor_payment_method,
+  f.aircraft_paid, f.instructor_paid, f.maintenance_flight,
   f.fuel_added_gal, f.oil_added_qt, f.rental_type, f.imported,
   f.instructor_name AS guest_instructor_name, f.billing_status, f.billing_note,
   f.paid, f.paid_at, f.paid_by, (SELECT name FROM users WHERE id = f.paid_by) AS paid_by_name,
@@ -1084,6 +1085,8 @@ type FlightLogRow = {
   ground_hours: number | null;
   ground_rate_cents: number | null;
   ground_cost_cents: number | null;
+  aircraft_payment_method: string | null;
+  instructor_payment_method: string | null;
   aircraft_paid: number;
   instructor_paid: number;
   maintenance_flight: number;
@@ -1131,6 +1134,8 @@ function mapFlightLog(row: FlightLogRow): FlightLogView {
     groundHours: row.ground_hours,
     groundRateCents: row.ground_rate_cents,
     groundCostCents: row.ground_cost_cents,
+    aircraftPaymentMethod: row.aircraft_payment_method === "cash" || row.aircraft_payment_method === "check" ? row.aircraft_payment_method : null,
+    instructorPaymentMethod: row.instructor_payment_method === "cash" || row.instructor_payment_method === "check" ? row.instructor_payment_method : null,
     aircraftPaid: row.aircraft_paid === 1,
     instructorPaid: row.instructor_paid === 1,
     maintenanceFlight: row.maintenance_flight === 1,
@@ -1226,16 +1231,82 @@ export async function updateFlightLogFuel(db: D1Database, id: string, gallons: n
   return true;
 }
 
-/** Marks an in-app rental paid or unpaid. Returns false for missing or billed-outside rows. */
-export async function setFlightLogPaid(db: D1Database, input: { id: string; paid: boolean; by: string }): Promise<boolean> {
+/** Clears the rental paid flag and both bill methods. Does not mark anything paid. */
+export async function clearRentalPayment(db: D1Database, id: string): Promise<boolean> {
   const result = await db
     .prepare(
-      `UPDATE flight_logs SET paid = ?, paid_at = ?, paid_by = ?
+      `UPDATE flight_logs
+       SET paid = 0, paid_at = NULL, paid_by = NULL,
+           aircraft_payment_method = NULL, instructor_payment_method = NULL
        WHERE id = ? AND billing_status != 'external'`,
     )
-    .bind(input.paid ? 1 : 0, input.paid ? new Date().toISOString() : null, input.paid ? input.by : null, input.id)
+    .bind(id)
     .run();
   return (result.meta.changes ?? 0) > 0;
+}
+
+/**
+ * Records or clears cash/check on one bill. The other bill's method is left as it is.
+ * The rental paid flag turns on only when every bill on the flight has a method,
+ * except a rental that was already paid with no methods stays paid until a bill is cleared.
+ */
+export async function saveBillPaymentMethod(
+  db: D1Database,
+  input: {
+    id: string;
+    bill: "aircraft" | "instructor";
+    method: "cash" | "check" | null;
+    by: string;
+    instructorBill: boolean;
+  },
+): Promise<boolean> {
+  const existing = await db
+    .prepare(
+      `SELECT billing_status, paid, paid_at, paid_by, aircraft_payment_method, instructor_payment_method
+       FROM flight_logs WHERE id = ?`,
+    )
+    .bind(input.id)
+    .first<{
+      billing_status: string;
+      paid: number;
+      paid_at: string | null;
+      paid_by: string | null;
+      aircraft_payment_method: string | null;
+      instructor_payment_method: string | null;
+    }>();
+  if (!existing || existing.billing_status === "external") return false;
+  if (input.bill === "instructor" && !input.instructorBill) return false;
+  const aircraftMethod = input.bill === "aircraft" ? input.method : normalizeMethod(existing.aircraft_payment_method);
+  const instructorMethod = input.bill === "instructor" ? input.method : normalizeMethod(existing.instructor_payment_method);
+  const complete = aircraftMethod != null && (!input.instructorBill || instructorMethod != null);
+  const legacyPaid = existing.paid === 1 && !normalizeMethod(existing.aircraft_payment_method) && !normalizeMethod(existing.instructor_payment_method);
+  let paid = 0;
+  let paidAt: string | null = null;
+  let paidBy: string | null = null;
+  if (input.method == null) {
+    paid = 0;
+  } else if (complete) {
+    paid = 1;
+    paidAt = existing.paid === 1 ? existing.paid_at : new Date().toISOString();
+    paidBy = existing.paid === 1 ? existing.paid_by : input.by;
+  } else if (legacyPaid) {
+    paid = 1;
+    paidAt = existing.paid_at;
+    paidBy = existing.paid_by;
+  }
+  const result = await db
+    .prepare(
+      `UPDATE flight_logs
+       SET aircraft_payment_method = ?, instructor_payment_method = ?, paid = ?, paid_at = ?, paid_by = ?
+       WHERE id = ? AND billing_status != 'external'`,
+    )
+    .bind(aircraftMethod, instructorMethod, paid, paidAt, paidBy, input.id)
+    .run();
+  return (result.meta.changes ?? 0) > 0;
+}
+
+function normalizeMethod(value: string | null): "cash" | "check" | null {
+  return value === "cash" || value === "check" ? value : null;
 }
 
 /** Everything still owed on in-app rentals. */

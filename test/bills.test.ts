@@ -465,7 +465,7 @@ describe("ground instruction on instructor flights", () => {
     expect(row.paid).toBe(0);
     expect(row.hobbs_in).toBeCloseTo(101.4);
 
-    await post(`/logs/${id}/paid`, { paid: "1", next: `/logs/${id}` }, await login(admin.email));
+    await db().prepare("UPDATE flight_logs SET paid = 1, paid_at = ?, paid_by = ? WHERE id = ?").bind("2026-06-15T20:00:00.000Z", admin.id, id).run();
     const paidBefore = await moneyRow(id);
     expect(paidBefore.paid).toBe(1);
     const warnedForm = await (await get(`/logs/${id}`, await login(admin.email))).text();
