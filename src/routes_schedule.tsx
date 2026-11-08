@@ -43,6 +43,7 @@ import {
 } from "./db";
 import { checked, field, isUuid, readForm, viewerOf } from "./http";
 import { DASHBOARD_LOG_LIMIT, DashboardPage } from "./pages_dash";
+import { FlightRecordPage } from "./pages_flight_record";
 import { LogDetailPage, LogsPage } from "./pages_logs";
 import { ReservationPage } from "./pages_reservation";
 import { ReservationFormPage, SchedulePage, type ReservationFormValues } from "./pages_schedule";
@@ -371,6 +372,8 @@ export function registerSchedule(app: Hono<AppEnv>): void {
   });
 
   app.get("/logs/:id", async (c) => renderLog(c, c.req.param("id"), null));
+
+  app.get("/logs/:id/record", async (c) => renderFlightRecord(c, c.req.param("id")));
 
   app.get("/logs/:id/bill/aircraft", async (c) => renderAircraftBill(c, c.req.param("id")));
   app.get("/logs/:id/bill/instructor", async (c) => renderInstructorBill(c, c.req.param("id")));
@@ -724,6 +727,16 @@ async function privateHtml(body: Response | Promise<Response>): Promise<Response
   const response = await body;
   response.headers.set("Cache-Control", "private, no-store");
   return response;
+}
+
+async function renderFlightRecord(c: Context<AppEnv>, id: string): Promise<Response> {
+  const user = mustUser(c);
+  const log = await getFlightLog(c.env.DB, id);
+  if (!log) return c.notFound();
+  if (!canReadLog(user, log)) return forbidden(c);
+  return privateHtml(c.html(document(
+    <FlightRecordPage viewer={viewerOf(user)} usingDevSecret={c.get("usingDevSecret")} log={log} />,
+  )));
 }
 
 async function renderAircraftBill(c: Context<AppEnv>, id: string, error: string | null = null): Promise<Response> {

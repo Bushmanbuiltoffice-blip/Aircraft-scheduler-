@@ -56,6 +56,7 @@ export function LogDetailPage(props: {
   return (
     <Layout title={`${log.tailNumber} log`} user={props.viewer} path={props.path} notice={props.notice} usingDevSecret={props.usingDevSecret}>
       <PageHead title={`${log.tailNumber} · ${formatHours(log.flightHours)} hr`} lede={formatDateTime(log.createdAt)}>
+        <a class="btn" href={`/logs/${log.id}/record`}>Print flight record</a>
         <a class="btn secondary" href={`/reservations/${log.reservationId}`}>Reservation</a>
       </PageHead>
       {props.error ? <p class="alert" role="alert">{props.error}</p> : null}
