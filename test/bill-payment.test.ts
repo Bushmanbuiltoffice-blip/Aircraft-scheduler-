@@ -205,8 +205,10 @@ describe("cash or check on each bill", () => {
     expect(afterAircraft.hobbs_in).toBeCloseTo(101.4);
     const printedAircraft = await (await get(`/logs/${withGround}/bill/aircraft`, cookie)).text();
     expect(printedAircraft).toContain('<p class="bill-paid-mark" id="bill-payment-mark">Paid by cash.</p>');
+    expect(printedAircraft).toContain("Mark this bill unpaid");
+    expect(printedAircraft).not.toContain("Was this paid by cash or by check?");
+    expect(printedAircraft).not.toContain(">Mark paid</button>");
     expect(printedAircraft).not.toContain("Paid by check.");
-    expect(printedAircraft).not.toMatch(/name="method"[^>]*checked/);
 
     const instructorPaid = await post(`/logs/${withGround}/bill/instructor/payment`, { action: "record", method: "check" }, cookie);
     expect(instructorPaid.status).toBe(303);
@@ -298,4 +300,127 @@ describe("cash or check on each bill", () => {
     expect((await post(`/logs/${outside}/bill/aircraft/payment`, { action: "record", method: "cash" }, cookie)).status).toBe(409);
     expect(await payRow(outside)).toEqual(beforeOutside);
   });
+
+  it("shows mark paid on the flight list and the flight for each real bill, and records cash or check from there", async () => {
+    const admin = await makeUser({ email: "owner@example.com", name: "Owner Admin", role: "admin" });
+    const instructor = await makeUser({ email: "cfi@example.com", name: "CFI One", role: "instructor" });
+    const renter = await makeUser({ email: "renter@example.com", name: "Renter Pilot", role: "renter" });
+    const aircraftId = crypto.randomUUID();
+    await db()
+      .prepare(
+        `INSERT INTO aircraft (id, tail_number, make, model, year, hourly_wet_cents, hourly_dry_cents, default_rate, status, hobbs, tach, notes, created_at)
+         VALUES (?, 'N1561Y', 'Cessna', '172C', 1962, 15500, NULL, 'wet', 'available', 100, 80, NULL, ?)`,
+      )
+      .bind(aircraftId, new Date().toISOString())
+      .run();
+    const dual = await insertLog({
+      pilotId: renter.id,
+      instructorId: instructor.id,
+      aircraftId,
+      aircraftCost: 21700,
+      instructorCost: 10500,
+      groundHours: 1.5,
+      groundCost: 11250,
+    });
+    const solo = await insertLog({ pilotId: renter.id, instructorId: null, aircraftId, aircraftCost: 15500, instructorCost: 0 });
+    const outside = await insertLog({
+      pilotId: renter.id,
+      instructorId: instructor.id,
+      aircraftId,
+      aircraftCost: 0,
+      instructorCost: 0,
+      external: true,
+    });
+    const before = await payRow(dual);
+
+    for (const actor of [admin, instructor]) {
+      const cookie = await login(actor.email!);
+      const list = await (await get("/logs", cookie)).text();
+      const detail = await (await get(`/logs/${dual}`, cookie)).text();
+      const aircraftBill = await (await get(`/logs/${dual}/bill/aircraft`, cookie)).text();
+      const instructorBill = await (await get(`/logs/${dual}/bill/instructor`, cookie)).text();
+      for (const page of [list, detail, aircraftBill, instructorBill]) {
+        expect(page).toContain(">Mark paid</button>");
+        expect(page).toContain("Was this paid by cash or by check?");
+        expect(page).not.toMatch(/name="method"[^>]*checked/);
+      }
+      const aircraftSlot = slot(list, `mark-paid-aircraft-${dual}`);
+      const instructorSlot = slot(list, `mark-paid-instructor-${dual}`);
+      expect(aircraftSlot).toContain("Aircraft bill");
+      expect(aircraftSlot).toContain(">Mark paid</button>");
+      expect(aircraftSlot).not.toContain("Mark this bill unpaid");
+      expect(instructorSlot).toContain("Instructor bill");
+      expect(instructorSlot).toContain("Ground instruction is included on this instructor bill.");
+      expect(instructorSlot).toContain(">Mark paid</button>");
+      expect(instructorSlot).not.toContain("Mark this bill unpaid");
+      expect(detail).toContain("Ground instruction is included on this instructor bill.");
+      expect(aircraftBill).toContain('id="bill-pay-form"');
+      expect(aircraftBill).not.toContain("Mark this bill unpaid");
+      expect(instructorBill).not.toContain("Mark this bill unpaid");
+    }
+
+    const adminCookie = await login(admin.email!);
+    const adminList = await (await get("/logs", adminCookie)).text();
+    expect(adminList).toContain(`action="/logs/${solo}/bill/aircraft/payment"`);
+    expect(adminList).not.toContain(`/logs/${solo}/bill/instructor/payment`);
+    expect(adminList).not.toContain(`/logs/${outside}/bill/`);
+    const soloDetail = await (await get(`/logs/${solo}`, adminCookie)).text();
+    expect(soloDetail).toContain(`action="/logs/${solo}/bill/aircraft/payment"`);
+    expect(soloDetail).not.toContain(`/logs/${solo}/bill/instructor/payment`);
+    const outsideDetail = await (await get(`/logs/${outside}`, adminCookie)).text();
+    expect(outsideDetail).toContain("Paid outside app");
+    expect(outsideDetail).not.toContain(">Mark paid</button>");
+    expect(outsideDetail).not.toContain("/payment");
+    expect(await payRow(dual)).toEqual(before);
+    expect(await payRow(outside)).toMatchObject({ aircraft_payment_method: null, instructor_payment_method: null, paid: 0, total_cost_cents: 0 });
+
+    const marked = await post(`/logs/${dual}/bill/aircraft/payment`, { action: "record", method: "cash", next: "/logs" }, adminCookie);
+    expect(marked.status).toBe(303);
+    expect(marked.headers.get("location")).toBe("/logs?notice=bill-paid-cash");
+    const afterList = await (await get("/logs", adminCookie)).text();
+    const paidAircraft = slot(afterList, `mark-paid-aircraft-${dual}`);
+    expect(paidAircraft).toContain("Paid by cash.");
+    expect(paidAircraft).toContain("Mark this bill unpaid");
+    expect(paidAircraft).not.toContain('name="method"');
+    expect(paidAircraft).not.toContain(">Mark paid</button>");
+    const stillInstructor = slot(afterList, `mark-paid-instructor-${dual}`);
+    expect(stillInstructor).toContain(">Mark paid</button>");
+    expect(stillInstructor).not.toContain("Mark this bill unpaid");
+    const afterDetail = await (await get(`/logs/${dual}`, adminCookie)).text();
+    expect(slot(afterDetail, `mark-paid-aircraft-${dual}`)).toContain("Paid by cash.");
+    expect((await payRow(dual)).paid).toBe(0);
+
+    const instructorCookie = await login(instructor.email!);
+    const instructorMarked = await post(`/logs/${dual}/bill/instructor/payment`, { action: "record", method: "check", next: `/logs/${dual}` }, instructorCookie);
+    expect(instructorMarked.status).toBe(303);
+    expect(instructorMarked.headers.get("location")).toBe(`/logs/${dual}?notice=bill-paid-check`);
+    expect(await payRow(dual)).toMatchObject({
+      aircraft_payment_method: "cash",
+      instructor_payment_method: "check",
+      paid: 1,
+      aircraft_cost_cents: 21700,
+      instructor_cost_cents: 10500,
+      ground_cost_cents: 11250,
+    });
+
+    const renterCookie = await login(renter.email!);
+    for (const path of ["/logs", `/logs/${dual}`, `/logs/${dual}/bill/aircraft`, `/logs/${dual}/bill/instructor`]) {
+      const page = await (await get(path, renterCookie)).text();
+      expect(page).not.toContain(">Mark paid</button>");
+      expect(page).not.toContain("bill-pay-form");
+      expect(page).not.toContain("Mark this bill unpaid");
+    }
+    expect((await post(`/logs/${dual}/bill/aircraft/payment`, { action: "record", method: "check", next: "/logs" }, renterCookie)).status).toBe(403);
+    expect((await payRow(dual)).aircraft_payment_method).toBe("cash");
+    const beforeOutside = await payRow(outside);
+    expect((await post(`/logs/${outside}/bill/aircraft/payment`, { action: "record", method: "cash", next: "/logs" }, adminCookie)).status).toBe(409);
+    expect(await payRow(outside)).toEqual(beforeOutside);
+  });
 });
+
+function slot(html: string, id: string): string {
+  const start = html.indexOf(`id="${id}"`);
+  expect(start).toBeGreaterThan(-1);
+  const next = html.indexOf("bill-pay-slot", start + 10);
+  return html.slice(start, next === -1 ? start + 1500 : next);
+}

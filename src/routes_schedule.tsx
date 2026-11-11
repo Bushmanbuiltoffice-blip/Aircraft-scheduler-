@@ -50,7 +50,7 @@ import { LogDetailPage, LogsPage } from "./pages_logs";
 import { ReservationPage } from "./pages_reservation";
 import { ReservationFormPage, SchedulePage, type ReservationFormValues } from "./pages_schedule";
 import { document, SimpleMessage } from "./ui";
-import { canMarkPaid, safeReturnPath } from "./payment";
+import { canMarkPaid, safeReturnPath, withNotice } from "./payment";
 import {
   addDays,
   defaultBookingWindow,
@@ -468,7 +468,7 @@ export function registerSchedule(app: Hono<AppEnv>): void {
     const log = await getFlightLog(c.env.DB, id);
     if (!log) return c.notFound();
     const data = await readForm(c);
-    const back = bill === "aircraft" ? `/logs/${id}/bill/aircraft` : `/logs/${id}/bill/instructor`;
+    const back = safeReturnPath(data.next, bill === "aircraft" ? `/logs/${id}/bill/aircraft` : `/logs/${id}/bill/instructor`);
     if (log.billingStatus === "external") {
       return c.html(
         document(<SimpleMessage title="Billed outside the app" message="This historical flight was paid outside the app. Its bills cannot be marked here." />),
@@ -484,7 +484,7 @@ export function registerSchedule(app: Hono<AppEnv>): void {
         instructorBill: canPrintInstructorBill(log),
       });
       if (!cleared) return renderBillPaymentError(c, id, bill, "That bill could not be marked unpaid.");
-      return c.redirect(`${back}?notice=bill-unpaid`, 303);
+      return c.redirect(withNotice(back, "bill-unpaid"), 303);
     }
     if (data.action !== "record") {
       return renderBillPaymentError(c, id, bill, "Choose cash or check before recording payment.");
@@ -506,7 +506,7 @@ export function registerSchedule(app: Hono<AppEnv>): void {
         422,
       );
     }
-    return c.redirect(`${back}?notice=bill-paid-${method}`, 303);
+    return c.redirect(withNotice(back, `bill-paid-${method}`), 303);
   });
 
   app.get("/ical/:token", async (c) => {

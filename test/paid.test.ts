@@ -150,7 +150,9 @@ describe("Paid / unpaid on rentals", () => {
     const html = await (await get("/logs", await login(s.admin.email))).text();
     expect(html).toContain('<span class="pay-badge pay-unpaid">Unpaid</span>');
     expect(html).toContain('<span class="pay-badge pay-outside">Paid outside app</span>');
-    expect(html).not.toContain(">Mark paid</button>");
+    expect(html).toContain(`action="/logs/${s.rental}/bill/aircraft/payment"`);
+    expect(html).toContain(">Mark paid</button>");
+    expect(html).not.toContain(`/logs/${s.historical}/bill/`);
     expect(html).not.toContain(`action="/logs/${s.historical}/paid"`);
   });
 
@@ -160,7 +162,9 @@ describe("Paid / unpaid on rentals", () => {
       const actor = role === "admin" ? s.admin : s.instructor;
       const cookie = await login(actor.email);
       const list = await (await get("/logs", cookie)).text();
-      expect(list).not.toContain(">Mark paid</button>");
+      expect(list).toContain(`action="/logs/${s.rental}/bill/aircraft/payment"`);
+      expect(list).toContain(">Mark paid</button>");
+      expect(list).not.toMatch(/name="method"[^>]*checked/);
       const bill = await (await get(`/logs/${s.rental}/bill/aircraft`, cookie)).text();
       expect(bill).toContain("Was this paid by cash or by check?");
       expect(bill).not.toContain("checked");
@@ -194,6 +198,8 @@ describe("Paid / unpaid on rentals", () => {
       const cookie = await login(person.email);
       const list = await (await get("/logs", cookie)).text();
       expect(list).toContain("pay-badge pay-unpaid");
+      expect(list).not.toContain(">Mark paid</button>");
+      expect(list).not.toContain("bill-pay-form");
       expect(list).not.toContain('class="pay-form"');
       const own = person.id === s.renter.id ? s.rental : s.studentRental;
       const tried = await post(`/logs/${own}/bill/aircraft/payment`, { action: "record", method: "cash" }, cookie);
@@ -245,7 +251,8 @@ describe("Paid / unpaid on rentals", () => {
     const reservation = await db().prepare("SELECT reservation_id FROM flight_logs WHERE id = ?").bind(s.rental).first<string>("reservation_id");
     const booking = await (await get(`/reservations/${reservation}`, cookie)).text();
     expect(booking).toContain("pay-badge pay-unpaid");
-    expect(booking).not.toContain(">Mark paid</button>");
+    expect(booking).toContain(`action="/logs/${s.rental}/bill/aircraft/payment"`);
+    expect(booking).toContain(">Mark paid</button>");
     const person = await (await get(`/pilots/${s.renter.id}`, cookie)).text();
     expect(person).toContain("pay-badge pay-unpaid");
     expect(person).toContain("$162.75 billed · $0.00 paid · $162.75 unpaid (1 rental)");

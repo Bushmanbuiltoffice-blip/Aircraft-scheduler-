@@ -526,7 +526,14 @@ dd { margin: 0.1rem 0 0; }
 }
 
 /* Paid / unpaid on rentals */
-.pay-control { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0.35rem 0.5rem; }
+.pay-control { display: flex; flex-direction: column; align-items: flex-start; gap: 0.35rem; }
+.pay-bills { display: flex; flex-direction: column; align-items: stretch; gap: 0.55rem; width: 100%; }
+.bill-pay-slot { width: 100%; }
+.bill-pay-form {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0.35rem;
+  color: var(--ink); background: #fffdf8; border: 1px solid #e4d8c4; border-radius: 12px; padding: 0.55rem 0.7rem;
+}
+.bill-pay-form .btn { min-height: 44px; }
 .pay-badge {
   display: inline-block; border-radius: 999px; padding: 0.15rem 0.6rem;
   font-size: 0.8rem; font-weight: 650; white-space: nowrap; border: 1px solid transparent;
