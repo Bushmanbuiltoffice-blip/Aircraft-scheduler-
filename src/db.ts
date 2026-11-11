@@ -195,7 +195,12 @@ export async function listUsers(db: D1Database): Promise<User[]> {
 
 export async function listInstructors(db: D1Database): Promise<User[]> {
   const { results } = await db
-    .prepare("SELECT * FROM users WHERE role = 'instructor' AND deleted_at IS NULL ORDER BY name COLLATE NOCASE")
+    .prepare(
+      `SELECT * FROM users
+       WHERE deleted_at IS NULL
+         AND (role = 'instructor' OR (role = 'admin' AND instructor_rate_cents IS NOT NULL))
+       ORDER BY name COLLATE NOCASE`,
+    )
     .all<UserRow>();
   return results.map(mapUser);
 }

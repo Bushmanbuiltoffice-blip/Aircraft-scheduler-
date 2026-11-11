@@ -78,13 +78,16 @@ export function registerSchedule(app: Hono<AppEnv>): void {
     const day = dayBounds(today);
     const month = monthRange(today, TIME_ZONE);
     const monthLabel = new Intl.DateTimeFormat("en-US", { timeZone: TIME_ZONE, month: "long" }).format(now);
-    const [aircraft, maintenance, todayAll, upcomingAll, logs, billing, totals, checkouts] = await Promise.all([
+    const [aircraft, maintenance, todayAll, dispatchOrPersonal, ownComingUp, logs, billing, totals, checkouts] = await Promise.all([
       listAircraft(c.env.DB),
       listMaintenance(c.env.DB, day.startIso, day.endIso),
       listReservationsOverlapping(c.env.DB, day.startIso, day.endIso),
       user.role === "admin"
         ? listUpcoming(c.env.DB, day.endIso, 12)
         : listComingUpForParticipant(c.env.DB, user.id, now.toISOString(), 30),
+      user.role === "admin" && user.instructorRateCents != null
+        ? listComingUpForParticipant(c.env.DB, user.id, now.toISOString(), 30)
+        : Promise.resolve([]),
       listFlightLogs(
         c.env.DB,
         user.role === "admin"
@@ -97,6 +100,7 @@ export function registerSchedule(app: Hono<AppEnv>): void {
       monthTotals(c.env.DB, month.startIso, month.endIso),
       listCheckoutsForUser(c.env.DB, user.id),
     ]);
+    const upcomingAll = mergeOwnComingUp(dispatchOrPersonal, ownComingUp);
     const todayItems = user.role === "admin" ? todayAll : todayAll.filter((item) => item.pilotId === user.id || item.instructorId === user.id);
     const tails = new Map(aircraft.map((item) => [item.id, item.tailNumber]));
     const medicalBanner = medicalBannerFor(user, today);
@@ -1007,6 +1011,15 @@ function aircraftResources(aircraft: Aircraft[], day: string): BoardResource[] {
     tone: RESOURCE_TONES[index % RESOURCE_TONES.length] ?? "#1d4e89",
     grounded: item.status === "grounded",
   }));
+}
+
+/** Dispatch Coming up stays intact. Flights where an admin-instructor is assigned are added if that list missed them. */
+function mergeOwnComingUp(dispatch: ScheduleEntry[], own: ScheduleEntry[]): ScheduleEntry[] {
+  if (own.length === 0) return dispatch;
+  const seen = new Set(dispatch.map((item) => item.id));
+  const extra = own.filter((item) => !seen.has(item.id));
+  if (extra.length === 0) return dispatch;
+  return [...dispatch, ...extra].sort((a, b) => a.startsAt.localeCompare(b.startsAt) || a.id.localeCompare(b.id));
 }
 
 function instructorResources(instructors: User[], day: string): BoardResource[] {

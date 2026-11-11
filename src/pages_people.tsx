@@ -198,11 +198,11 @@ export function PersonFormPage(props: {
             Medical expires
             <input type="date" name="medical_expiration" value={props.values.medicalExpiration} />
           </label>
-          {props.values.role === "instructor" || props.canEditRole ? (
+          {props.values.role === "instructor" || props.values.role === "admin" || props.canEditRole ? (
             <label>
               Instructor hourly rate
               <input name="instructor_rate" value={props.values.instructorRate} inputmode="decimal" />
-              <small>Used when this person is the instructor on a flight. Enter 0 if you do not charge.</small>
+              <small>Used when this person is the instructor on a flight. An admin with a rate stays on the instructor list. Enter 0 if you do not charge. Leave blank only for an admin who does not instruct.</small>
             </label>
           ) : null}
           {props.mode === "create" ? (

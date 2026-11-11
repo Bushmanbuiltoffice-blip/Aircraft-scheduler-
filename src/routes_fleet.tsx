@@ -385,7 +385,7 @@ export function registerFleet(app: Hono<AppEnv>): void {
         passwordHash: user.passwordHash,
         createdAt: user.createdAt,
         icalToken: user.icalToken,
-        instructorRateCents: user.role === "instructor" ? parsed.draft.instructorRateCents : user.instructorRateCents,
+        instructorRateCents: user.role === "instructor" || user.role === "admin" ? parsed.draft.instructorRateCents : user.instructorRateCents,
       });
     } catch (error) {
       if (!isUniqueError(error)) throw error;
@@ -799,11 +799,12 @@ async function parsePerson(
     if (!medicalExpiration) errors.push("Medical expiration should be a real date.");
   }
   let instructorRateCents: number | null = null;
-  if (role === "instructor") {
-    if (!values.instructorRate) errors.push("Enter an instructor hourly rate, or 0.");
-    else {
+  if (role === "instructor" || role === "admin") {
+    if (values.instructorRate) {
       instructorRateCents = parseDollarsToCents(values.instructorRate);
       if (instructorRateCents == null) errors.push("Instructor rate should look like 75.00.");
+    } else if (role === "instructor") {
+      errors.push("Enter an instructor hourly rate, or 0.");
     }
   }
   // New people start with no usable password. They pick one from their invite link.
