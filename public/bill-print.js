@@ -11,11 +11,20 @@ function holdPdf() {
   try { sessionStorage.setItem("fh_pdf_hold", String(Date.now())); } catch (error) { /* the link still opens */ }
 }
 
-function showPrintStatus(message) {
+function showPrintStatus(message, kind) {
   var el = document.getElementById("print-status");
   if (!el) return;
   el.hidden = false;
+  el.className = kind === "ok" ? "no-print alert ok" : "no-print alert";
   el.textContent = message;
+}
+
+function revealUrl(href) {
+  var box = document.getElementById("print-url");
+  if (!box) return;
+  box.hidden = false;
+  box.value = href;
+  box.defaultValue = href;
 }
 
 function bindPrint(button) {
@@ -28,13 +37,13 @@ function bindPrint(button) {
       window.print();
     } catch (error) {
       window.removeEventListener("beforeprint", mark);
-      showPrintStatus("Print did not open (" + (error && error.name ? error.name : "error") + "). Save PDF opens this document. If a share sheet appears, choose Print. The file stays on this site.");
+      showPrintStatus("Print did not open (" + (error && error.name ? error.name : "error") + "). Tap Save PDF. It opens this document in a new window from that tap.");
       return;
     }
     window.setTimeout(function () {
       window.removeEventListener("beforeprint", mark);
       if (!fired && standaloneApp()) {
-        showPrintStatus("Print did not open. Save PDF opens this document. If a share sheet appears, choose Print. The file stays on this site.");
+        showPrintStatus("Print did not open. Tap Save PDF. It opens this document in a new window from that tap.");
       }
     }, 700);
   });
@@ -47,5 +56,17 @@ if (printRecord) bindPrint(printRecord);
 
 var saveLinks = document.querySelectorAll("a.save-pdf");
 for (var i = 0; i < saveLinks.length; i++) {
-  saveLinks[i].addEventListener("click", function () { holdPdf(); });
+  saveLinks[i].addEventListener("click", function (event) {
+    var link = event.currentTarget;
+    holdPdf();
+    if (!standaloneApp()) return;
+    if (!link.target || link.target === "_self") {
+      event.preventDefault();
+      showPrintStatus("Save PDF has no new window. Address: " + link.href);
+      revealUrl(link.href);
+      return;
+    }
+    showPrintStatus("Save PDF tapped. A new window should open this document: " + link.href, "ok");
+    revealUrl(link.href);
+  });
 }

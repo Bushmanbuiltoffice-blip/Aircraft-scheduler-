@@ -57,11 +57,12 @@ export function FlightRecordPage(props: { viewer: Viewer; usingDevSecret: boolea
         </p>
         <p class="no-print bill-actions">
           <button class="btn browser-print" id="print-record" type="button">Print</button>
-          <a class="btn save-pdf" id="save-pdf" href={`/logs/${log.id}/record.pdf`}>Save PDF</a>
+          <a class="btn save-pdf" id="save-pdf" href={`/logs/${log.id}/record.pdf`} target="_blank" rel="noopener">Save PDF</a>
           <a class="btn secondary" href={`/logs/${log.id}`}>Back to this flight</a>
         </p>
         <p id="print-status" class="no-print alert" role="status" hidden></p>
-        <script src="/bill-print.js?v=4"></script>
+        <input id="print-url" class="no-print" readonly hidden aria-label="Document address" />
+        <script src="/bill-print.js?v=5"></script>
       </article>
     </Layout>
   );

@@ -10,5 +10,9 @@ export function savePdfFollowsLink(): true {
 export function printFallbackMessage(input: { standalone: boolean; beforePrintFired: boolean; errorName?: string | null }): string | null {
   if (!input.standalone || input.beforePrintFired) return null;
   const why = input.errorName ? ` (${input.errorName})` : "";
-  return `Print did not open${why}. Save PDF opens this document. If a share sheet appears, choose Print. The file stays on this site.`;
+  return `Print did not open${why}. Tap Save PDF. It opens this document in a new window from that tap.`;
+}
+
+export function savePdfStatus(href: string): string {
+  return `Save PDF tapped. A new window should open this document: ${href}`;
 }

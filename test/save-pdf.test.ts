@@ -2,7 +2,7 @@ import { env, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { hashPassword, newToken } from "../src/auth";
 import { insertUser } from "../src/db";
-import { printFallbackMessage, savePdfFollowsLink } from "../src/print_action";
+import { printFallbackMessage, savePdfFollowsLink, savePdfStatus } from "../src/print_action";
 import { pdfText, textPdf } from "../src/text_pdf";
 import { addDays, todayInZone } from "../src/time";
 import type { User } from "../src/types";
@@ -82,7 +82,12 @@ describe("downloadable bill and flight-record PDFs", () => {
     const xrefAt = Number(text.slice(start + "startxref\n".length).split("\n")[0]);
     expect(text.slice(xrefAt, xrefAt + 4)).toBe("xref");
     expect(savePdfFollowsLink()).toBe(true);
-    expect(printFallbackMessage({ standalone: true, beforePrintFired: false })).toContain("Print did not open");
+    expect(printFallbackMessage({ standalone: true, beforePrintFired: false })).toBe(
+      "Print did not open. Tap Save PDF. It opens this document in a new window from that tap.",
+    );
+    expect(savePdfStatus("https://rampboard.test/logs/abc/bill/aircraft.pdf")).toBe(
+      "Save PDF tapped. A new window should open this document: https://rampboard.test/logs/abc/bill/aircraft.pdf",
+    );
     expect(printFallbackMessage({ standalone: true, beforePrintFired: false, errorName: "NotAllowedError" })).toContain("NotAllowedError");
     expect(printFallbackMessage({ standalone: false, beforePrintFired: false })).toBeNull();
     expect(printFallbackMessage({ standalone: true, beforePrintFired: true })).toBeNull();
@@ -155,12 +160,18 @@ describe("downloadable bill and flight-record PDFs", () => {
 
     const page = await (await get(`/logs/${id}/bill/aircraft`, cookie)).text();
     expect(page).toContain(`href="/logs/${id}/bill/aircraft.pdf"`);
-    expect(page).toContain(`href="/logs/${id}/bill/aircraft.pdf"`);
     expect(page).toContain('id="save-pdf"');
+    expect(page).toContain('target="_blank"');
+    expect(page).toContain('rel="noopener"');
     expect(page).toContain('id="print-bill"');
     expect(page).toContain('id="print-status"');
-    expect(page).toContain("/bill-print.js?v=4");
+    expect(page).toContain('id="print-url"');
+    expect(page).toContain("/bill-print.js?v=5");
     expect(page).not.toContain("preventDefault");
+    const recordPage = await (await get(`/logs/${id}/record`, cookie)).text();
+    expect(recordPage).toContain(`href="/logs/${id}/record.pdf"`);
+    expect(recordPage).toContain('target="_blank"');
+    expect(recordPage).toContain("/bill-print.js?v=5");
 
     const record = await get(`/logs/${id}/record.pdf`, cookie);
     const recordText = pdfText(new Uint8Array(await record.arrayBuffer()));

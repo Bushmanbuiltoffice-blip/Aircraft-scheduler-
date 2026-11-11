@@ -148,6 +148,7 @@ p { margin: 0.35rem 0; }
 }
 .alert p { margin: 0.15rem 0; }
 .alert.ok { background: #e5f4ec; color: #145233; }
+#print-url:not([hidden]) { display: block; width: 100%; margin-top: 0.5rem; }
 .alert.warn { background: #fff5d9; color: #6a4a08; }
 
 .pill {

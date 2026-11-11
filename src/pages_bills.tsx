@@ -136,11 +136,12 @@ function BillSheet(props: {
       {props.payment}
       <p class="no-print bill-actions">
         <button class="btn browser-print" id="print-bill" type="button">Print</button>
-        {props.pdfHref ? <a class="btn save-pdf" id="save-pdf" href={props.pdfHref}>Save PDF</a> : null}
+        {props.pdfHref ? <a class="btn save-pdf" id="save-pdf" href={props.pdfHref} target="_blank" rel="noopener">Save PDF</a> : null}
         <a class="btn secondary" href="/logs">Back to flight logs</a>
       </p>
       <p id="print-status" class="no-print alert" role="status" hidden></p>
-      <script src="/bill-print.js?v=4"></script>
+      <input id="print-url" class="no-print" readonly hidden aria-label="Document address" />
+      <script src="/bill-print.js?v=5"></script>
     </article>
   );
 }
