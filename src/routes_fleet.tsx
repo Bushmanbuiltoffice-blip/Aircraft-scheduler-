@@ -1,8 +1,22 @@
 /** @jsxImportSource hono/jsx */
 import type { Context, Hono } from "hono";
-import { emailError, hashPassword, newToken, normalizeEmail, passwordError, verifyPassword } from "./auth";
+import { emailError, hashPassword, newToken, normalizeEmail, passwordError, UNUSABLE_PASSWORD_HASH, verifyPassword } from "./auth";
 import { pageNotice } from "./copy";
+import { inviteLinkResponse } from "./routes_invite";
+import {
+  canManageInsurancePdf,
+  confirmInsuranceExpiration,
+  ensureInsuranceExpiration,
+  ensureUncheckedInsurance,
+  getInsurancePdf,
+  rereadInsuranceExpiration,
+  replaceInsurancePdf,
+  streamInsurancePdf,
+} from "./documents";
+import { agreementLabels, agreementStatus, getAgreement } from "./agreement";
+import { insuranceListLabel } from "./policy_expiration";
 import { booksOnlySelf } from "./domain";
+import { contentDisposition, isPdf, MAX_UPLOAD_BYTES, formatBytes } from "./resources";
 import {
   countAdmins,
   deleteCheckout,
@@ -29,6 +43,7 @@ import {
   upsertCheckout,
 } from "./db";
 import { blankToNull, checked, field, isUuid, readForm, viewerOf } from "./http";
+import { hasWorkingLogin, pendingInvites } from "./invites";
 import { parseDollarsToCents, parseMeter } from "./format";
 import { AccountPassword, DeletePersonPage, PeoplePage, PersonFormPage, personToForm, RemovedPersonPage, type PersonFormValues } from "./pages_people";
 import { AircraftFormPage, AircraftListPage, aircraftToForm, type AircraftFormValues } from "./pages_fleet";
@@ -190,6 +205,15 @@ export function registerFleet(app: Hono<AppEnv>): void {
     if (booksOnlySelf(user.role)) return c.redirect("/account");
     const today = todayInZone();
     const people = await listUsers(c.env.DB);
+    await ensureUncheckedInsurance(c.env.DB);
+    const insuranceRows = await c.env.DB
+      .prepare("SELECT user_id, expiration_date FROM user_documents WHERE kind = 'insurance'")
+      .all<{ user_id: string; expiration_date: string | null }>();
+    const insuranceLabels = new Map(insuranceRows.results.map((row) => [row.user_id, insuranceListLabel(row.expiration_date, today)]));
+    const [invites, signedLabels] = await Promise.all([
+      user.role === "admin" ? pendingInvites(c.env.DB) : Promise.resolve(new Map<string, string>()),
+      agreementLabels(c.env.DB),
+    ]);
     const checkoutCounts = new Map<string, number>();
     await Promise.all(
       people.map(async (person) => {
@@ -208,6 +232,10 @@ export function registerFleet(app: Hono<AppEnv>): void {
             ...person,
             medicalState: medicalState(person.medicalExpiration, today),
             checkoutCount: checkoutCounts.get(person.id) ?? 0,
+            hasLogin: hasWorkingLogin(person),
+            inviteExpiresAt: invites.get(person.id) ?? null,
+            insuranceLabel: insuranceLabels.get(person.id) ?? "No PDF",
+            agreementLabel: signedLabels.get(person.id) ?? "Not signed",
           }))}
         />,
       ),
@@ -231,7 +259,8 @@ export function registerFleet(app: Hono<AppEnv>): void {
       if (!isUniqueError(error)) throw error;
       return personResponse(c, "create", parsed.values, ["That email is already in use."], null);
     }
-    return c.redirect(`/pilots/${parsed.draft.id}?notice=pilot-saved`, 303);
+    // Show the invite right away so the admin can send it.
+    return inviteLinkResponse(c, user, { ...parsed.draft, deletedAt: null } as User, { justAdded: true });
   });
 
 
@@ -318,6 +347,26 @@ export function registerFleet(app: Hono<AppEnv>): void {
     return c.redirect(`/pilots/${person.id}?notice=pilot-saved`, 303);
   });
 
+  app.get("/pilots/:id/insurance/view", (c) => serveInsurance(c, c.req.param("id"), "inline"));
+  app.get("/pilots/:id/insurance/download", (c) => serveInsurance(c, c.req.param("id"), "attachment"));
+  app.post("/pilots/:id/insurance", async (c) => {
+    const actor = mustUser(c);
+    const person = await getUserById(c.env.DB, c.req.param("id"));
+    if (!person) return c.notFound();
+    return saveInsurance(c, actor, person, "edit");
+  });
+  app.post("/pilots/:id/insurance/expiration", async (c) => saveExpiration(c, c.req.param("id"), "edit"));
+  app.post("/pilots/:id/insurance/expiration/reread", async (c) => rereadExpiration(c, c.req.param("id"), "edit"));
+
+  app.get("/account/insurance/view", (c) => serveInsurance(c, mustUser(c).id, "inline"));
+  app.get("/account/insurance/download", (c) => serveInsurance(c, mustUser(c).id, "attachment"));
+  app.post("/account/insurance", async (c) => {
+    const user = mustUser(c);
+    return saveInsurance(c, user, user, "self");
+  });
+  app.post("/account/insurance/expiration", async (c) => saveExpiration(c, mustUser(c).id, "self"));
+  app.post("/account/insurance/expiration/reread", async (c) => rereadExpiration(c, mustUser(c).id, "self"));
+
   app.get("/account", async (c) => {
     const user = mustUser(c);
     return personResponse(c, "self", personToForm(user), [], user);
@@ -336,7 +385,7 @@ export function registerFleet(app: Hono<AppEnv>): void {
         passwordHash: user.passwordHash,
         createdAt: user.createdAt,
         icalToken: user.icalToken,
-        instructorRateCents: user.role === "instructor" ? parsed.draft.instructorRateCents : user.instructorRateCents,
+        instructorRateCents: user.role === "instructor" || user.role === "admin" ? parsed.draft.instructorRateCents : user.instructorRateCents,
       });
     } catch (error) {
       if (!isUniqueError(error)) throw error;
@@ -407,6 +456,7 @@ async function renderAircraft(c: Context<AppEnv>, id: string, errors: string[], 
         blocks={blocks}
         upcoming={upcomingAll.filter((item) => item.aircraftId === aircraft.id)}
         groundedNow={aircraft.status === "grounded"}
+        aircraftId={aircraft.id}
       />,
     ),
     errors.length ? 422 : 200,
@@ -419,6 +469,8 @@ async function personResponse(
   values: PersonFormValues,
   errors: string[],
   person: User | null,
+  insuranceError: string | null = null,
+  status?: 200 | 400 | 413 | 422,
 ): Promise<Response> {
   const user = mustUser(c);
   const aircraft = person ? await listAircraft(c.env.DB) : [];
@@ -426,6 +478,12 @@ async function personResponse(
   const upcoming = person ? await listReservationsForUser(c.env.DB, person.id, new Date(Date.now() - 86_400_000).toISOString()) : [];
   const logs = person && (user.role === "admin" || user.id === person.id) ? await listFlightLogs(c.env.DB, { pilotId: person.id, limit: 20 }) : undefined;
   const icalUrl = mode === "self" ? new URL(`/ical/${user.icalToken}`, c.req.url).toString() : null;
+  const insurance = person && mode !== "create" ? await ensureInsuranceExpiration(c.env.DB, person.id) : null;
+  const agreement = person && mode !== "create" ? await getAgreement(c.env.DB, person.id) : null;
+  const agreementState = agreementStatus(agreement);
+  const canSeeSignedPdf = Boolean(person && agreementState === "complete" && (mode === "self" || user.role === "admin"));
+  const canEditInsurance = Boolean(person && mode !== "create" && !person.deletedAt && canManageInsurancePdf(user, person.id));
+  const insuranceBase = mode === "self" ? "/account/insurance" : `/pilots/${person?.id}/insurance`;
   return c.html(
     document(
       <PersonFormPage
@@ -438,8 +496,8 @@ async function personResponse(
         values={values}
         errors={errors}
         canEditRole={user.role === "admin" && mode !== "self"}
-        showPassword={user.role === "admin" && mode !== "self"}
-        passwordHint={mode === "create" ? "Share this once. At least 10 characters, with a letter and a number." : "Leave blank to keep the current password."}
+        showPassword={user.role === "admin" && mode === "edit"}
+        passwordHint="Leave blank to keep the current password."
         aircraft={aircraft}
         checkouts={checkouts}
         checkoutAction={person ? `/pilots/${person.id}/checkouts` : undefined}
@@ -449,10 +507,108 @@ async function personResponse(
         upcoming={upcoming}
         logs={logs}
         icalUrl={icalUrl}
+        insurance={
+          person && mode !== "create"
+            ? {
+                document: insurance
+                  ? {
+                      fileName: insurance.fileName,
+                      sizeBytes: insurance.sizeBytes,
+                      updatedAt: insurance.updatedAt,
+                      expirationDate: insurance.expirationDate,
+                      expirationSource: insurance.expirationSource,
+                    }
+                  : null,
+                canEdit: canEditInsurance,
+                uploadAction: insuranceBase,
+                viewHref: insurance && canEditInsurance ? `${insuranceBase}/view` : null,
+                downloadHref: insurance && canEditInsurance ? `${insuranceBase}/download` : null,
+                expirationAction: `${insuranceBase}/expiration`,
+                rereadAction: `${insuranceBase}/expiration/reread`,
+                error: insuranceError,
+              }
+            : null
+        }
+        agreement={
+          person && mode !== "create"
+            ? {
+                status: agreementState,
+                record: agreementState === "missing" ? null : agreement,
+                downloadHref: canSeeSignedPdf ? (mode === "self" ? "/agreement/signed" : `/pilots/${person.id}/agreement/signed`) : null,
+              }
+            : null
+        }
       />,
     ),
-    errors.length ? 422 : 200,
+    status ?? (errors.length ? 422 : insuranceError ? 400 : 200),
   );
+}
+
+async function serveInsurance(c: Context<AppEnv>, userId: string, kind: "inline" | "attachment"): Promise<Response> {
+  const actor = mustUser(c);
+  if (!isUuid(userId) || !canManageInsurancePdf(actor, userId)) return forbidden(c);
+  const doc = await getInsurancePdf(c.env.DB, userId);
+  if (!doc) return c.notFound();
+  const headers = new Headers({
+    "Content-Type": "application/pdf",
+    "Content-Length": String(doc.sizeBytes),
+    "Content-Disposition": contentDisposition(kind, doc.fileName),
+    "Cache-Control": "private, no-store",
+    "X-Content-Type-Options": "nosniff",
+  });
+  return new Response(streamInsurancePdf(c.env.DB, userId), { headers });
+}
+
+async function saveInsurance(c: Context<AppEnv>, actor: User, person: User, mode: "self" | "edit"): Promise<Response> {
+  if (!canManageInsurancePdf(actor, person.id)) return forbidden(c);
+  if (person.deletedAt) return removedPersonResponse(c, person);
+  const body = await c.req.parseBody();
+  const file = body.file;
+  const fail = (message: string, status: 400 | 413) =>
+    personResponse(c, mode, personToForm(mode === "self" ? actor : person), [], person, message, status);
+  if (!(file instanceof File) || file.size === 0) return fail("Choose a PDF file to upload.", 400);
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return fail(`That file is ${formatBytes(file.size)}. The limit is ${formatBytes(MAX_UPLOAD_BYTES)}.`, 413);
+  }
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (!isPdf(bytes)) return fail("That file is not a PDF.", 400);
+  await replaceInsurancePdf(c.env.DB, {
+    userId: person.id,
+    fileName: file.name || "insurance.pdf",
+    bytes,
+    uploadedBy: actor.id,
+  });
+  const next = mode === "self" ? "/account?notice=insurance-saved#insurance" : `/pilots/${person.id}?notice=insurance-saved#insurance`;
+  return c.redirect(next, 303);
+}
+
+async function saveExpiration(c: Context<AppEnv>, userId: string, mode: "self" | "edit"): Promise<Response> {
+  const actor = mustUser(c);
+  if (!isUuid(userId) || !canManageInsurancePdf(actor, userId)) return forbidden(c);
+  const person = await getUserById(c.env.DB, userId);
+  if (!person) return c.notFound();
+  if (!(await getInsurancePdf(c.env.DB, person.id))) {
+    return personResponse(c, mode, personToForm(person), [], person, "Upload an insurance PDF before entering a date.", 400);
+  }
+  const raw = field(await readForm(c), "expiration_date");
+  const date = raw ? parseDay(raw) : null;
+  if (raw && !date) {
+    return personResponse(c, mode, personToForm(person), [], person, "Enter a real expiration date, or leave it blank if it is not confirmed.", 400);
+  }
+  await confirmInsuranceExpiration(c.env.DB, person.id, date);
+  const next = mode === "self" ? "/account?notice=insurance-date-saved#insurance" : `/pilots/${person.id}?notice=insurance-date-saved#insurance`;
+  return c.redirect(next, 303);
+}
+
+async function rereadExpiration(c: Context<AppEnv>, userId: string, mode: "self" | "edit"): Promise<Response> {
+  const actor = mustUser(c);
+  if (!isUuid(userId) || !canManageInsurancePdf(actor, userId)) return forbidden(c);
+  const person = await getUserById(c.env.DB, userId);
+  if (!person) return c.notFound();
+  const read = await rereadInsuranceExpiration(c.env.DB, person.id);
+  if (!read) return c.notFound();
+  const next = mode === "self" ? "/account?notice=insurance-date-read#insurance" : `/pilots/${person.id}?notice=insurance-date-read#insurance`;
+  return c.redirect(next, 303);
 }
 
 async function removalBlock(c: Context<AppEnv>, actor: User, person: User): Promise<{ blockedSelf: boolean; blockedLastAdmin: boolean }> {
@@ -643,23 +799,22 @@ async function parsePerson(
     if (!medicalExpiration) errors.push("Medical expiration should be a real date.");
   }
   let instructorRateCents: number | null = null;
-  if (role === "instructor") {
-    if (!values.instructorRate) errors.push("Enter an instructor hourly rate, or 0.");
-    else {
+  if (role === "instructor" || role === "admin") {
+    if (values.instructorRate) {
       instructorRateCents = parseDollarsToCents(values.instructorRate);
       if (instructorRateCents == null) errors.push("Instructor rate should look like 75.00.");
+    } else if (role === "instructor") {
+      errors.push("Enter an instructor hourly rate, or 0.");
     }
   }
-  let passwordHash = input.current?.passwordHash ?? "";
-  if (input.mode === "create") {
-    const problem = passwordError(values.password);
-    if (problem) errors.push(problem);
-  } else if (input.mode === "edit" && values.password) {
+  // New people start with no usable password. They pick one from their invite link.
+  let passwordHash = input.mode === "create" ? UNUSABLE_PASSWORD_HASH : (input.current?.passwordHash ?? UNUSABLE_PASSWORD_HASH);
+  if (input.mode === "edit" && values.password) {
     const problem = passwordError(values.password);
     if (problem) errors.push(problem);
   }
   if (errors.length) return { values, errors, draft: null };
-  if (input.mode === "create" || (input.mode === "edit" && values.password)) passwordHash = await hashPassword(values.password);
+  if (input.mode === "edit" && values.password) passwordHash = await hashPassword(values.password);
   return {
     values,
     errors,

@@ -1,8 +1,13 @@
 /** @jsxImportSource hono/jsx */
-import { BILLED_OUTSIDE_LABEL, formatHours, formatMeter, formatMoney, statusLabel } from "./format";
+import { BILLED_OUTSIDE_LABEL, formatFuel, formatGroundHours, formatHours, formatMeter, formatMoney, formatOil, statusLabel } from "./format";
 import { formatDateTime, formatTime } from "./time";
+import { canMarkPaid, PaymentControl } from "./payment";
 import type { Aircraft, Checkout, FlightLogView, MaintenanceBlock, PilotBilling, ScheduleEntry } from "./types";
+import { BillLinks } from "./pages_bills";
 import { Layout, PageHead, RolePill, type Viewer } from "./ui";
+
+/** The dashboard shows only the most recent flights; /logs has the full list. */
+export const DASHBOARD_LOG_LIMIT = 3;
 
 export function DashboardPage(props: {
   viewer: Viewer;
@@ -17,7 +22,6 @@ export function DashboardPage(props: {
   logs: FlightLogView[];
   billing: PilotBilling[];
   month: { hours: number; cents: number; flights: number; label: string };
-  outbox: Array<{ subject: string; toEmail: string; createdAt: string }>;
   medicalBanner: string | null;
   checkouts: Array<Checkout & { tail: string }>;
 }) {
@@ -28,6 +32,37 @@ export function DashboardPage(props: {
     <Layout title="Dashboard" user={props.viewer} path={props.path} notice={props.notice} usingDevSecret={props.usingDevSecret}>
       <PageHead title={props.viewer.role === "admin" ? "Dispatch" : "Your day"} lede={props.todayLabel} />
       {props.medicalBanner ? <p class="alert" role="alert">{props.medicalBanner}</p> : null}
+      {/* Kyle's order: Coming up, then Aircraft, then everything else. Same order on phones. */}
+      <section class="card card-pad" id="dash-coming-up">
+        <header class="section-head">
+          <h2>Coming up</h2>
+          <a href="/reservations/new">New reservation</a>
+        </header>
+        {props.upcoming.length === 0 ? <p class="muted">No upcoming reservations.</p> : <ReservationList items={props.upcoming} />}
+      </section>
+      <section class="card card-pad" id="dash-aircraft">
+        <header class="section-head">
+          <h2>Aircraft</h2>
+          {props.viewer.role === "admin" ? <a href="/aircraft/new">Add aircraft</a> : <a href="/aircraft">Fleet</a>}
+        </header>
+        <ul class="fleet-list">
+          {props.aircraft.map((item) => {
+            const down = props.maintenance.find((block) => block.aircraftId === item.id);
+            return (
+              <li>
+                <a href={`/aircraft/${item.id}`}>
+                  <span class="tail">{item.tailNumber}</span>
+                  <span>{item.make} {item.model}</span>
+                </a>
+                <span class={`pill ${item.status}`}>{statusLabel(item.status)}</span>
+                {down ? <small class="muted">Down: {down.reason}</small> : <small class="muted">Hobbs {formatMeter(item.hobbs)} · Tach {formatMeter(item.tach)}</small>}
+                {props.viewer.role === "admin" ? <a class="tbx-link" href={`/aircraft/${item.id}/tbx`}>TBX update</a> : null}
+              </li>
+            );
+          })}
+          {props.aircraft.length === 0 ? <li class="muted">No aircraft yet.</li> : null}
+        </ul>
+      </section>
       <section class="stats">
         <article class="stat">
           <strong>{props.today.length}</strong>
@@ -46,43 +81,12 @@ export function DashboardPage(props: {
           <span>Hobbs hours in {props.month.label}</span>
         </article>
       </section>
-      <div class="cols">
-        <section class="card card-pad">
-          <header class="section-head">
-            <h2>Today</h2>
-            <a href="/schedule">Open the board</a>
-          </header>
-          {props.today.length === 0 ? <p class="muted">Nothing on the board today.</p> : <ReservationList items={props.today} />}
-        </section>
-        <section class="card card-pad">
-          <header class="section-head">
-            <h2>Aircraft</h2>
-            {props.viewer.role === "admin" ? <a href="/aircraft/new">Add aircraft</a> : <a href="/aircraft">Fleet</a>}
-          </header>
-          <ul class="fleet-list">
-            {props.aircraft.map((item) => {
-              const down = props.maintenance.find((block) => block.aircraftId === item.id);
-              return (
-                <li>
-                  <a href={`/aircraft/${item.id}`}>
-                    <span class="tail">{item.tailNumber}</span>
-                    <span>{item.make} {item.model}</span>
-                  </a>
-                  <span class={`pill ${item.status}`}>{statusLabel(item.status)}</span>
-                  {down ? <small class="muted">Down: {down.reason}</small> : <small class="muted">Hobbs {formatMeter(item.hobbs)}</small>}
-                </li>
-              );
-            })}
-            {props.aircraft.length === 0 ? <li class="muted">No aircraft yet.</li> : null}
-          </ul>
-        </section>
-      </div>
-      <section class="card card-pad">
+      <section class="card card-pad" id="dash-today">
         <header class="section-head">
-          <h2>Coming up</h2>
-          <a href="/reservations/new">New reservation</a>
+          <h2>Today</h2>
+          <a href="/schedule">Open the board</a>
         </header>
-        {props.upcoming.length === 0 ? <p class="muted">No upcoming reservations.</p> : <ReservationList items={props.upcoming} />}
+        {props.today.length === 0 ? <p class="muted">Nothing on the board today.</p> : <ReservationList items={props.today} />}
       </section>
       {props.viewer.role !== "admin" ? (
         <section class="card card-pad">
@@ -101,12 +105,12 @@ export function DashboardPage(props: {
           )}
         </section>
       ) : null}
-      <section class="card">
+      <section class="card" id="dash-flight-log">
         <header class="section-head pad">
-          <h2>Flight log</h2>
-          <a href="/logs">All logs</a>
+          <h2>Last {DASHBOARD_LOG_LIMIT} flights</h2>
+          <a href="/logs">View all flight logs</a>
         </header>
-        <LogTable logs={props.logs} />
+        <LogTable logs={props.logs.slice(0, DASHBOARD_LOG_LIMIT)} admin={canMarkPaid(props.viewer.role)} returnTo="/" />
       </section>
       {props.viewer.role === "admin" ? (
         <section class="card">
@@ -114,6 +118,11 @@ export function DashboardPage(props: {
             <h2>Billing by pilot</h2>
             <span class="muted">{formatMoney(props.month.cents)} billed this month · {props.month.flights} in-app flights</span>
           </header>
+          <p class="pad billing-outstanding" id="dash-outstanding">
+            <strong>{formatMoney(props.billing.reduce((sum, row) => sum + row.unpaidCents, 0))}</strong> outstanding (unpaid rentals)
+            {" · "}
+            <a href="/logs">Mark rentals paid on the flight log</a>
+          </p>
           <div class="table-wrap">
             <table>
               <thead>
@@ -122,6 +131,8 @@ export function DashboardPage(props: {
                   <th>Flights</th>
                   <th>Hobbs</th>
                   <th>Billed</th>
+                  <th>Paid</th>
+                  <th>Unpaid</th>
                 </tr>
               </thead>
               <tbody>
@@ -131,32 +142,19 @@ export function DashboardPage(props: {
                     <td>{row.flights}</td>
                     <td>{formatHours(row.hours)}</td>
                     <td>{formatMoney(row.totalCents)}</td>
+                    <td>{formatMoney(row.paidCents)}</td>
+                    <td class={row.unpaidCents > 0 ? "owed" : ""}>
+                      {formatMoney(row.unpaidCents)}
+                      {row.unpaidFlights > 0 ? <small class="muted"> · {row.unpaidFlights} unpaid</small> : null}
+                    </td>
                   </tr>
                 ))}
                 {props.billing.length === 0 ? (
-                  <tr><td colspan={4} class="muted">No in-app charges yet. Cost is calculated at check-in. Flights billed outside the app stay on the flight log.</td></tr>
+                  <tr><td colspan={6} class="muted">No in-app charges yet. Cost is calculated at check-in. Flights billed outside the app stay on the flight log.</td></tr>
                 ) : null}
               </tbody>
             </table>
           </div>
-        </section>
-      ) : null}
-      {props.viewer.role === "admin" ? (
-        <section class="card card-pad">
-          <header class="section-head">
-            <h2>Notifications</h2>
-            <span class="muted">Saved here. Not emailed.</span>
-          </header>
-          {props.outbox.length === 0 ? <p class="muted">No notifications yet.</p> : (
-            <ul class="plain">
-              {props.outbox.map((item) => (
-                <li>
-                  <strong>{item.subject}</strong>
-                  <span class="muted"> to {item.toEmail} · {formatDateTime(item.createdAt)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
         </section>
       ) : null}
     </Layout>
@@ -181,10 +179,11 @@ function ReservationList(props: { items: ScheduleEntry[] }) {
   );
 }
 
-export function LogTable(props: { logs: FlightLogView[] }) {
+export function LogTable(props: { logs: FlightLogView[]; admin?: boolean; returnTo?: string }) {
+  const returnTo = props.returnTo ?? "/logs";
   return (
     <div class="table-wrap">
-      <table>
+      <table class="log-table">
         <thead>
           <tr>
             <th>When</th>
@@ -193,38 +192,49 @@ export function LogTable(props: { logs: FlightLogView[] }) {
             <th>Type</th>
             <th>Hobbs</th>
             <th>Hours</th>
+            <th>Oil</th>
+            <th>Fuel</th>
             <th>Total</th>
+            <th>Payment</th>
           </tr>
         </thead>
         <tbody>
           {props.logs.map((log) => (
-            <tr>
-              <td><a href={`/logs/${log.id}`}>{formatDateTime(log.createdAt)}</a></td>
-              <td>
+            <tr id={`log-${log.id}`}>
+              <td data-label="When"><a href={`/logs/${log.id}`}>{formatDateTime(log.createdAt)}</a></td>
+              <td data-label="Pilot">
                 {log.pilotName}
                 {log.pilotRole === "student" ? <> <RolePill role="student" /></> : null}
                 {log.instructorName ? <small class="muted"> with {log.instructorName}</small> : null}
               </td>
-              <td class="tail">{log.tailNumber}</td>
-              <td>{log.rentalType ?? "—"}</td>
-              <td>{formatMeter(log.hobbsOut)}–{formatMeter(log.hobbsIn)}</td>
-              <td>
+              <td data-label="Aircraft" class="tail">{log.tailNumber}</td>
+              <td data-label="Type">{log.rentalType ?? "—"}</td>
+              <td data-label="Hobbs">{formatMeter(log.hobbsOut)}–{formatMeter(log.hobbsIn)}</td>
+              <td data-label="Hours">
                 {formatHours(log.flightHours)}
-                {log.groundHours != null && log.groundHours > 0 ? <small class="muted">{formatHours(log.groundHours)} ground</small> : null}
+                {log.groundHours != null && log.groundHours > 0 ? <small class="muted">{formatGroundHours(log.groundHours)} ground</small> : null}
               </td>
-              <td>
+              <td data-label="Oil">{formatOil(log.oilAddedQt)}</td>
+              <td data-label="Fuel">{formatFuel(log.fuelAddedGal)}</td>
+              <td data-label="Total">
                 {log.billingStatus === "external" ? (
                   <>
                     <span class="pill external">Billed outside</span>
                     <small class="muted">{log.billingNote ?? BILLED_OUTSIDE_LABEL}</small>
                   </>
                 ) : (
-                  formatMoney(log.totalCostCents)
+                  <>
+                    <span class="amount">{formatMoney(log.totalCostCents)}</span>
+                    <BillLinks log={log} />
+                  </>
                 )}
+              </td>
+              <td class="pay-cell" data-label="Payment">
+                <PaymentControl log={log} admin={Boolean(props.admin)} returnTo={`${returnTo}#log-${log.id}`} />
               </td>
             </tr>
           ))}
-          {props.logs.length === 0 ? <tr><td colspan={7} class="muted">No flights logged yet.</td></tr> : null}
+          {props.logs.length === 0 ? <tr><td colspan={10} class="muted">No flights logged yet.</td></tr> : null}
         </tbody>
       </table>
     </div>

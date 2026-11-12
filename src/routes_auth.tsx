@@ -8,6 +8,7 @@ import {
   placeholderPasswordHash,
   sessionSecret,
   verifyPassword,
+  UNUSABLE_PASSWORD_HASH,
 } from "./auth";
 import { createSession, deleteSession, getUserByEmail, insertAdminIfNone, isUniqueError } from "./db";
 import { clearSessionCookie, field, readForm, readSessionCookie, safeNext, setSessionCookie } from "./http";
@@ -28,7 +29,8 @@ export function registerAuth(app: Hono<AppEnv>): void {
     const next = safeNext(field(data, "next"));
     const user = email ? await getUserByEmail(c.env.DB, email) : null;
     const valid = await verifyPassword(password, user?.passwordHash ?? (await placeholderPasswordHash()));
-    if (!user || !valid) {
+    // Accounts added without a password ("disabled") never match, and an empty password never signs in.
+    if (!user || !valid || !password || user.passwordHash === UNUSABLE_PASSWORD_HASH) {
       return c.html(document(<LoginPage error="Email or password is incorrect." email={email} next={next} />), 401);
     }
     const token = newToken();

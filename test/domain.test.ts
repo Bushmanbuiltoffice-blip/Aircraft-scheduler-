@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { hashPassword, verifyPassword } from "../src/auth";
-import { booksOnlySelf, canBookDespiteEligibility, computeFlightCost, pilotEligibility, validateReservationWindow } from "../src/domain";
+import { MEDICAL_WITH_INSTRUCTOR_NOTE, booksOnlySelf, canBookDespiteEligibility, computeFlightCost, medicalWaivedByInstructor, pilotEligibility, soloCheckoutNeedsInsurance, validateReservationWindow } from "../src/domain";
+import { formatOil, oilTallyText, parseOilQuarts, tallyOil } from "../src/format";
 import { buildIcal, escapeText } from "../src/ical";
 import { buildMonthCalendar } from "../src/board";
 import { addDays, clipToWindow, monthGrid, rangesOverlap, shiftMonth, todayInZone, zonedTimeToUtc } from "../src/time";
@@ -89,6 +90,82 @@ describe("eligibility", () => {
     expect(result.blocks.join(" ")).toMatch(/Not checked out/);
   });
 
+  it("turns a missing or expired medical into a note when an instructor is aboard", () => {
+    for (const medicalExpiration of [null, "2026-10-01"]) {
+      const result = pilotEligibility({
+        medicalExpiration,
+        checkout: { status: "current", expiresOn: null },
+        today,
+        aircraftTail: "N1561Y",
+        instructorAboard: true,
+      });
+      expect(result.ok).toBe(true);
+      expect(result.blocks).toEqual([]);
+      expect(result.warnings.join(" ")).toContain(MEDICAL_WITH_INSTRUCTOR_NOTE);
+    }
+  });
+
+  it("still blocks a solo flight without a current medical", () => {
+    const result = pilotEligibility({
+      medicalExpiration: "2026-10-01",
+      checkout: { status: "current", expiresOn: null },
+      today,
+      aircraftTail: "N1561Y",
+      instructorAboard: false,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.blocks.join(" ")).toMatch(/Medical expired/);
+  });
+
+  it("keeps the aircraft checkout rule when an instructor is aboard", () => {
+    const result = pilotEligibility({
+      medicalExpiration: null,
+      checkout: null,
+      today,
+      aircraftTail: "N1561Y",
+      instructorAboard: true,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.blocks).toEqual(["Not checked out in N1561Y."]);
+  });
+
+  it("requires an insurance PDF for solo check-out and skips it when an instructor is assigned", () => {
+    expect(soloCheckoutNeedsInsurance(null)).toBe(true);
+    expect(soloCheckoutNeedsInsurance("")).toBe(true);
+    expect(soloCheckoutNeedsInsurance(undefined)).toBe(true);
+    expect(soloCheckoutNeedsInsurance("11111111-1111-4111-8111-111111111111")).toBe(false);
+  });
+
+  it("parses oil quarts without turning a blank into zero", () => {
+    expect(parseOilQuarts("")).toEqual({ ok: true, value: null });
+    expect(parseOilQuarts("  ")).toEqual({ ok: true, value: null });
+    expect(parseOilQuarts("0")).toEqual({ ok: true, value: 0 });
+    expect(parseOilQuarts("0.50")).toEqual({ ok: true, value: 0.5 });
+    expect(parseOilQuarts("1.25")).toEqual({ ok: true, value: 1.25 });
+    expect(parseOilQuarts("24")).toEqual({ ok: true, value: 24 });
+    expect(parseOilQuarts("-1").ok).toBe(false);
+    expect(parseOilQuarts("1.234").ok).toBe(false);
+    expect(parseOilQuarts("abc").ok).toBe(false);
+    expect(parseOilQuarts("Infinity").ok).toBe(false);
+    expect(parseOilQuarts("30").ok).toBe(false);
+    expect(formatOil(null)).toBe("Not recorded");
+    expect(formatOil(0)).toBe("0 qt");
+    expect(formatOil(1.5)).toBe("1.5 qt");
+    const tally = tallyOil([null, 0, 1.5, undefined]);
+    expect(tally).toEqual({ recordedQt: 1.5, recordedCount: 2, missingCount: 2 });
+    expect(oilTallyText(tally)).toContain("1.5 qt");
+    expect(oilTallyText(tally)).toContain("not counted as zero");
+  });
+
+  it("waives the medical only for students and renters with an instructor", () => {
+    expect(medicalWaivedByInstructor("student", true)).toBe(true);
+    expect(medicalWaivedByInstructor("renter", true)).toBe(true);
+    expect(medicalWaivedByInstructor("student", false)).toBe(false);
+    expect(medicalWaivedByInstructor("renter", false)).toBe(false);
+    expect(medicalWaivedByInstructor("admin", true)).toBe(false);
+    expect(medicalWaivedByInstructor("instructor", true)).toBe(false);
+  });
+
   it("warns when a medical is inside 30 days", () => {
     const result = pilotEligibility({
       medicalExpiration: addDays(today, 10),
@@ -98,6 +175,39 @@ describe("eligibility", () => {
     });
     expect(result.ok).toBe(true);
     expect(result.warnings[0]).toMatch(/Medical expires/);
+  });
+});
+
+describe("default booking window", () => {
+  it("uses 9:00 AM for a future day and lasts two hours", async () => {
+    const { defaultBookingWindow } = await import("../src/time");
+    expect(defaultBookingWindow("2026-11-03", "2026-10-29", new Date("2026-10-29T20:00:00Z"))).toEqual({
+      startsAt: "2026-11-03T09:00",
+      endsAt: "2026-11-03T11:00",
+    });
+  });
+  it("keeps a requested start time on a future day", async () => {
+    const { defaultBookingWindow } = await import("../src/time");
+    expect(defaultBookingWindow("2026-11-03", "2026-10-29", new Date(), "14:00")).toEqual({
+      startsAt: "2026-11-03T14:00",
+      endsAt: "2026-11-03T16:00",
+    });
+  });
+  it("uses the next full hour today, also when the requested slot already passed", async () => {
+    const { defaultBookingWindow } = await import("../src/time");
+    // 20:10 UTC is 1:10 PM Pacific (PDT).
+    const now = new Date("2026-10-29T20:10:00Z");
+    expect(defaultBookingWindow("2026-10-29", "2026-10-29", now).startsAt).toBe("2026-10-29T14:00");
+    expect(defaultBookingWindow("2026-10-29", "2026-10-29", now, "09:00").startsAt).toBe("2026-10-29T14:00");
+    expect(defaultBookingWindow("2026-10-29", "2026-10-29", now, "17:00").startsAt).toBe("2026-10-29T17:00");
+  });
+  it("rolls past midnight late in the evening", async () => {
+    const { defaultBookingWindow } = await import("../src/time");
+    // 06:30 UTC on Oct 30 is 11:30 PM Pacific on Oct 29.
+    expect(defaultBookingWindow("2026-10-29", "2026-10-29", new Date("2026-10-30T06:30:00Z"))).toEqual({
+      startsAt: "2026-10-30T00:00",
+      endsAt: "2026-10-30T02:00",
+    });
   });
 });
 

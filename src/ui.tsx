@@ -16,12 +16,25 @@ export function document(node: Child) {
   return html`<!DOCTYPE html>${node}`;
 }
 
+/** Manifest plus the cold-start script. The script does not redirect a normal browser tab. */
+export function AppLaunch() {
+  return (
+    <>
+      <link rel="manifest" href="/manifest.webmanifest" />
+      <meta name="mobile-web-app-capable" content="yes" />
+      <meta name="apple-mobile-web-app-capable" content="yes" />
+      <script src="/app-launch.js"></script>
+    </>
+  );
+}
+
 const NAV = [
   { href: "/", label: "Dashboard" },
   { href: "/schedule", label: "Schedule" },
   { href: "/aircraft", label: "Aircraft" },
   { href: "/pilots", label: "People" },
   { href: "/logs", label: "Flight logs" },
+  { href: "/resources", label: "Resources" },
   { href: "/account", label: "Account" },
 ];
 
@@ -50,6 +63,7 @@ export function Layout(props: {
           rel="stylesheet"
         />
         <link rel="stylesheet" href="/app.css" />
+        <AppLaunch />
       </head>
       <body>
         <a class="skip" href="#content">Skip to content</a>
@@ -121,6 +135,7 @@ export function GuestShell(props: { title: string; kicker: string; lede: string;
           rel="stylesheet"
         />
         <link rel="stylesheet" href="/app.css" />
+        <AppLaunch />
       </head>
       <body class="guest-body">
         <div class="login-shell">
@@ -190,12 +205,39 @@ export function SimpleMessage(props: { title: string; message: string }) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>{props.title} · {ORG_NAME}</title>
         <link rel="stylesheet" href="/app.css" />
+        <AppLaunch />
       </head>
       <body>
         <main class="wrap narrow">
           <h1>{props.title}</h1>
           <p>{props.message}</p>
           <p><a href="/">Back to {ORG_NAME}</a></p>
+        </main>
+      </body>
+    </html>
+  );
+}
+
+export function TryAgainPage(props: { href: string }) {
+  return (
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="robots" content="noindex" />
+        <title>Please try again · {ORG_NAME}</title>
+        <link rel="stylesheet" href="/app.css" />
+        <AppLaunch />
+      </head>
+      <body>
+        <main class="wrap narrow">
+          <h1>Please try again</h1>
+          <p>
+            For your security, {ORG_NAME} could not confirm that this form came from this site. This can happen when a page
+            was open for a long time or was opened from an email app. Reload the page and submit it again.
+          </p>
+          <p><a class="btn" href={props.href}>Try again</a></p>
+          <p class="muted">If it keeps happening, open {ORG_NAME} in Safari or Chrome directly.</p>
         </main>
       </body>
     </html>

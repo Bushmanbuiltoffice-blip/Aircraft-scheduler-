@@ -47,6 +47,8 @@ export function reservationMessage(input: {
   instructorName: string | null;
   kind: "booked" | "updated" | "cancelled" | "checked_in";
   total?: string;
+  ground?: string;
+  combined?: string;
 }): EmailMessage {
   const who = input.instructorName ? `${input.pilotName} with ${input.instructorName}` : `${input.pilotName} (solo)`;
   const verb =
@@ -66,6 +68,8 @@ export function reservationMessage(input: {
     `Pilot: ${who}`,
   ];
   if (input.total) lines.push(`Total billed from Hobbs: ${input.total}`);
+  if (input.ground) lines.push(`Ground instruction: ${input.ground}`);
+  if (input.combined) lines.push(`Combined total: ${input.combined}`);
   lines.push("", `This note was recorded by ${ORG_NAME}. No email provider is connected yet.`);
   return {
     to: "",

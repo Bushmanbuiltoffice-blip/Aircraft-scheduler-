@@ -59,6 +59,7 @@ export function AircraftFormPage(props: {
   blocks?: MaintenanceBlock[];
   upcoming?: ScheduleEntry[];
   groundedNow?: boolean;
+  aircraftId?: string;
 }) {
   return (
     <Layout title={props.values.tailNumber || "Aircraft"} user={props.viewer} path={props.path} usingDevSecret={props.usingDevSecret}>
@@ -66,6 +67,9 @@ export function AircraftFormPage(props: {
         title={props.mode === "create" ? "Add aircraft" : props.values.tailNumber}
         lede={props.mode === "edit" ? "Rates are what check-in will bill." : "Tail number, rates, and starting meters."}
       >
+        {props.mode === "edit" && props.viewer.role === "admin" && props.aircraftId ? (
+          <a class="btn secondary" href={`/aircraft/${props.aircraftId}/tbx`}>TBX update</a>
+        ) : null}
         {props.mode === "edit" ? <a class="btn secondary" href="/aircraft">All aircraft</a> : null}
       </PageHead>
       {props.viewer.role === "admin" ? (

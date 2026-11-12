@@ -15,10 +15,12 @@ export function SchedulePage(props: {
   board: "aircraft" | "instructors";
   anchor: string;
   today: string;
+  /** Current Pacific hour when the day view shows today, else null. */
+  nowHour?: number | null;
   lanes: DayLane[];
   nowPct: number | null;
   weekDays: string[];
-  weekRows: Array<{ title: string; subtitle: string; tone: string; href: string; cells: WeekCellItem[][] }>;
+  weekRows: Array<{ title: string; subtitle: string; tone: string; href: string; bookHref?: string; grounded?: boolean; cells: WeekCellItem[][] }>;
   monthWeeks: MonthDay[][];
 }) {
   const prev = props.view === "month" ? shiftMonth(props.anchor, -1) : addDays(props.anchor, props.view === "week" ? -7 : -1);
@@ -61,7 +63,7 @@ export function SchedulePage(props: {
       ) : props.lanes.length === 0 ? (
         <p class="card card-pad">Nothing to put on this board yet. Add an aircraft{props.board === "instructors" ? " and an instructor" : ""} first.</p>
       ) : props.view === "day" ? (
-        <div class="board-scroll card">
+        <div class="board-scroll card" data-schedule-today={props.anchor === props.today && props.nowPct == null ? "1" : undefined} tabindex={props.anchor === props.today && props.nowPct == null ? -1 : undefined}>
           <div class="day-head">
             <div class="gutter-spacer"></div>
             <div class="head-row">
@@ -87,9 +89,23 @@ export function SchedulePage(props: {
               {props.nowPct != null ? <i class="now-flag" style={`top:${props.nowPct}%`}></i> : null}
             </div>
             <div class="lane-row">
-              {props.lanes.map((lane) => (
+              {props.lanes.map((lane, laneIndex) => (
                 <div class={`lane${lane.grounded ? " grounded" : ""}`}>
-                  {props.nowPct != null ? <i class="now-line" style={`top:${props.nowPct}%`}></i> : null}
+                  {lane.grounded || props.anchor < props.today
+                    ? null
+                    : hours.slice(0, -1).map((hour) =>
+                        props.anchor === props.today && props.nowHour != null && hour <= props.nowHour ? null : (
+                          <a
+                            class="slot-add"
+                            href={`${lane.bookHref}&start=${String(hour).padStart(2, "0")}:00`}
+                            style={`top:${((hour - DAY_START_HOUR) / (DAY_END_HOUR - DAY_START_HOUR)) * 100}%;height:${100 / (DAY_END_HOUR - DAY_START_HOUR)}%`}
+                            aria-label={`New reservation: ${lane.title}, ${formatHour(hour)}`}
+                          >
+                            <span aria-hidden="true">+ {formatHour(hour)}</span>
+                          </a>
+                        ),
+                      )}
+                  {props.nowPct != null ? <i class="now-line" data-schedule-today={laneIndex === 0 ? "1" : undefined} tabindex={laneIndex === 0 ? -1 : undefined} style={`top:${props.nowPct}%`}></i> : null}
                   {lane.blocks.map((block) => (
                     <a
                       class={`block ${block.className}`}
@@ -122,12 +138,12 @@ export function SchedulePage(props: {
           ) : null}
         </div>
       ) : (
-        <div class="board-scroll card">
+        <div class="board-scroll card" id="week-board" data-today-index={props.weekDays.indexOf(props.today) >= 0 ? String(props.weekDays.indexOf(props.today)) : undefined}>
           <div class="week-grid">
             <div class="week-row week-head">
               <div class="week-corner">Resource</div>
               {props.weekDays.map((day) => (
-                <div class={`week-day${day === props.today ? " today" : ""}`}>
+                <div class={`week-day${day === props.today ? " today" : ""}`} data-schedule-today={day === props.today ? "1" : undefined} tabindex={day === props.today ? -1 : undefined}>
                   <a href={scheduleHref("day", props.board, day)}>{formatDayLabel(day)}</a>
                 </div>
               ))}
@@ -141,8 +157,17 @@ export function SchedulePage(props: {
                     <small>{row.subtitle}</small>
                   </a>
                 </div>
-                {row.cells.map((cell) => (
+                {row.cells.map((cell, index) => (
                   <div class="week-cell">
+                    {row.grounded || !row.bookHref || (props.weekDays[index] ?? "") < props.today ? null : (
+                      <a
+                        class="cell-add"
+                        href={withDate(row.bookHref, props.weekDays[index] ?? props.anchor)}
+                        aria-label={`New reservation: ${row.title}, ${formatLongDay(props.weekDays[index] ?? props.anchor)}`}
+                      >
+                        <span aria-hidden="true">+</span>
+                      </a>
+                    )}
                     {cell.map((item) => (
                       <a class={`chip ${item.className}`} href={item.href} aria-label={item.aria}>
                         <strong>{item.time}</strong>
@@ -156,6 +181,7 @@ export function SchedulePage(props: {
           </div>
         </div>
       )}
+      <script src="/schedule-focus.js"></script>
       <p class="legend">
         <span class="pill scheduled">Scheduled</span>
         <span class="pill out">Checked out</span>
@@ -176,7 +202,12 @@ function MonthGrid(props: { weeks: MonthDay[][]; today: string; board: string })
           <div class="month-dow" aria-hidden="true">{label}</div>
         ))}
         {props.weeks.flat().map((cell) => (
-          <div class={`month-cell${cell.inMonth ? "" : " outside"}${cell.day === props.today ? " today" : ""}`}>
+          <div class={`month-cell${cell.inMonth ? "" : " outside"}${cell.day === props.today ? " today" : ""}${cell.day < props.today ? " past" : " bookable"}`} data-schedule-today={cell.day === props.today ? "1" : undefined} tabindex={cell.day === props.today ? -1 : undefined}>
+            {cell.day < props.today ? null : (
+              <a class="month-add" href={newReservationHref(cell.day)} aria-label={`New reservation on ${formatLongDay(cell.day)}`}>
+                <span aria-hidden="true">+</span>
+              </a>
+            )}
             <a class="month-num" href={scheduleHref("day", props.board, cell.day)} aria-label={`Open ${formatLongDay(cell.day)}`}>
               {Number(cell.day.slice(8))}
             </a>
@@ -216,6 +247,15 @@ function MonthList(props: { items: MonthDay["items"] }) {
       ))}
     </ul>
   );
+}
+
+/** New reservation for a day; the form picks the default airplane and time. */
+export function newReservationHref(day: string, start?: string): string {
+  return `/reservations/new?date=${day}${start ? `&start=${start}` : ""}`;
+}
+
+function withDate(href: string, day: string): string {
+  return href.replace(/([?&])date=\d{4}-\d{2}-\d{2}/, `$1date=${day}`);
 }
 
 function scheduleHref(view: string, board: string, date: string): string {

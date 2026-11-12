@@ -24,6 +24,8 @@ export type MedicalClass = "first" | "second" | "third" | "basicmed" | "none";
 
 export type Bindings = {
   DB: D1Database;
+  /** Static assets. Files under /docs are private and only reached through /resources. */
+  ASSETS?: Fetcher;
   SESSION_SECRET?: string;
 };
 
@@ -129,6 +131,10 @@ export interface FlightLog {
   rateBasis: RateBasis;
   createdAt: string;
   groundHours: number | null;
+  /** Instructor rate snapshotted when ground hours were recorded. Null means ground was not recorded. */
+  groundRateCents: number | null;
+  /** Saved ground charge. Null means no ground charge has been recorded. */
+  groundCostCents: number | null;
   aircraftPaid: boolean;
   instructorPaid: boolean;
   maintenanceFlight: boolean;
@@ -139,6 +145,17 @@ export interface FlightLog {
   guestInstructorName: string | null;
   billingStatus: BillingStatus;
   billingNote: string | null;
+  /** Route or other note saved with the flight. Null when none was entered. */
+  notes: string | null;
+  /** Cash or check saved on the aircraft bill. Null means no choice has been recorded. */
+  aircraftPaymentMethod: "cash" | "check" | null;
+  /** Cash or check saved on the instructor bill, which includes ground. Null means no choice. */
+  instructorPaymentMethod: "cash" | "check" | null;
+  /** In-app rentals only. Admins and instructors mark bills paid; new rentals start unpaid. */
+  paid: boolean;
+  paidAt: string | null;
+  paidBy: string | null;
+  paidByName: string | null;
 }
 
 export type ScheduleEntry = {
@@ -180,4 +197,7 @@ export type PilotBilling = {
   flights: number;
   hours: number;
   totalCents: number;
+  paidCents: number;
+  unpaidCents: number;
+  unpaidFlights: number;
 };

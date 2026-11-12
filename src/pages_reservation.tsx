@@ -1,5 +1,10 @@
 /** @jsxImportSource hono/jsx */
-import { formatMeter, rateLabel, statusLabel } from "./format";
+import { agreementCheckoutMessage, type AgreementStatus } from "./agreement";
+import { soloInsuranceMissingMessage } from "./copy";
+import { canMarkPaid } from "./payment";
+import { formatFuel, formatMeter, formatMoney, formatOil, rateLabel, statusLabel } from "./format";
+import { classifyExpiration, insuranceFlagMessage, type ExpirationSource } from "./policy_expiration";
+import { todayInZone } from "./time";
 import { formatDateTime, toDateTimeLocalValue } from "./time";
 import type { FlightLogView, ScheduleEntry } from "./types";
 import { FlightChargeCard, HistoricalDetails } from "./pages_logs";
@@ -19,9 +24,18 @@ export function ReservationPage(props: {
   aircraftRateCents: number | null;
   instructorRateCents: number | null;
   actionError?: string | null;
+  aircraftHobbs?: number | null;
+  aircraftTach?: number | null;
+  /** Set only for a solo flight that is still scheduled. Dual flights leave this null. */
+  soloInsurance?: { onFile: boolean; uploadHref: string | null; pilotName: string } | null;
+  /** Set when an insurance PDF is on file, for solo and dual. A missing PDF leaves this null. */
+  insuranceFlag?: { pilotName: string; date: string | null; source: ExpirationSource | null } | null;
+  agreementGate?: { pilotName: string; status: AgreementStatus; signHref: string | null } | null;
 }) {
   const entry = props.entry;
   const estimateRate = props.instructorRateCents ?? 0;
+  const insuranceBlock = props.soloInsurance && !props.soloInsurance.onFile ? props.soloInsurance : null;
+  const agreementBlock = props.agreementGate && props.agreementGate.status !== "complete" ? props.agreementGate : null;
   return (
     <Layout title={entry.tailNumber} user={props.viewer} path={props.path} notice={props.notice} usingDevSecret={props.usingDevSecret}>
       <PageHead title={`${entry.tailNumber} reservation`} lede={`${entry.make} ${entry.model}`}>
@@ -39,14 +53,16 @@ export function ReservationPage(props: {
             <div><dt>Rate basis</dt><dd>{rateLabel(entry.rateBasis)}</dd></div>
             <div><dt>Aircraft</dt><dd><a class="tail" href={`/aircraft/${entry.aircraftId}`}>{entry.tailNumber}</a></dd></div>
             <div><dt>Hobbs out / in</dt><dd>{formatMeter(entry.hobbsOut)} / {formatMeter(entry.hobbsIn)}</dd></div>
-            <div><dt>Tach out / in</dt><dd>{formatMeter(entry.tachOut)} / {formatMeter(entry.tachIn)}</dd></div>
+            <div><dt>Tach out / in (maintenance, not billed)</dt><dd>{formatMeter(entry.tachOut)} / {formatMeter(entry.tachIn)}</dd></div>
+            {props.log ? <div><dt>Oil added</dt><dd>{formatOil(props.log.oilAddedQt)}</dd></div> : null}
+            {props.log ? <div><dt>Fuel added</dt><dd>{formatFuel(props.log.fuelAddedGal)}</dd></div> : null}
             {props.log?.imported ? <HistoricalDetails log={props.log} /> : null}
           </dl>
           {entry.notes ? <p class="notes">{entry.notes}</p> : null}
         </div>
         {props.log ? (
           <div>
-            <FlightChargeCard log={props.log} />
+            <FlightChargeCard log={props.log} admin={canMarkPaid(props.viewer.role)} returnTo={`/reservations/${entry.id}`} />
             <p><a href={`/logs/${props.log.id}`}>Open the log</a></p>
           </div>
         ) : (
@@ -56,18 +72,53 @@ export function ReservationPage(props: {
           </aside>
         )}
       </section>
-      {props.canManage && entry.status === "scheduled" ? (
+      {props.canManage && entry.status === "scheduled" && agreementBlock ? (
+        <section class="card card-pad" id="agreement-required">
+          <h2>Rental agreement needed</h2>
+          {props.actionError ? null : (
+            <p class="alert" role="alert">{agreementCheckoutMessage(agreementBlock.pilotName, agreementBlock.status)}</p>
+          )}
+          {agreementBlock.signHref ? <p><a class="btn" href={agreementBlock.signHref}>Sign the rental agreement</a></p> : <p>Ask {agreementBlock.pilotName} to sign it from their own account. An admin cannot sign it for them.</p>}
+        </section>
+      ) : null}
+      {props.insuranceFlag ? <InsuranceFlagNotice flag={props.insuranceFlag} /> : null}
+      {props.canManage && entry.status === "scheduled" && insuranceBlock ? (
+        <section class="card card-pad" id="solo-insurance">
+          <h2>Insurance PDF needed</h2>
+          {props.actionError ? null : (
+            <p class="alert" role="alert">{soloInsuranceMissingMessage(insuranceBlock.pilotName)}</p>
+          )}
+          {insuranceBlock.uploadHref ? (
+            <p><a class="btn" href={insuranceBlock.uploadHref}>Upload insurance PDF</a></p>
+          ) : (
+            <p>Ask {insuranceBlock.pilotName} to upload their insurance PDF from Account.</p>
+          )}
+        </section>
+      ) : null}
+      {props.canManage && entry.status === "scheduled" && !insuranceBlock && !agreementBlock ? (
         <section class="card card-pad">
           <h2>Check out</h2>
-          <p class="muted">Record the meters before the flight. Suggested values are the aircraft's current readings.</p>
-          <form method="post" action={`/reservations/${entry.id}/checkout`} class="fields">
+          {props.soloInsurance?.onFile ? <p class="muted">Insurance PDF is on file.</p> : null}
+          <p class="muted">
+            Read both meters on the airplane before every flight. The boxes start with the last recorded readings
+            {props.aircraftHobbs != null || props.aircraftTach != null
+              ? ` (Hobbs ${formatMeter(props.aircraftHobbs ?? null)} · Tach ${formatMeter(props.aircraftTach ?? null)})`
+              : ""}
+            . Change them if the airplane shows something different.
+          </p>
+          <form method="post" action={`/reservations/${entry.id}/checkout`} class="fields meter-form">
             <label>
-              Hobbs out
-              <input name="hobbs_out" inputmode="decimal" required value={props.hobbsSuggestion} />
+              Hobbs out (required, billed)
+              <input name="hobbs_out" inputmode="decimal" pattern="\d{1,6}(\.\d)?" required value={props.hobbsSuggestion} aria-describedby="meter-format" />
             </label>
             <label>
-              Tach out
-              <input name="tach_out" inputmode="decimal" required value={props.tachSuggestion} />
+              Tach out (required, maintenance only, not billed)
+              <input name="tach_out" inputmode="decimal" pattern="\d{1,6}(\.\d)?" required value={props.tachSuggestion} aria-describedby="meter-format" />
+            </label>
+            <small id="meter-format" class="wide muted">Hours with one decimal, like 318.6. Charges use Hobbs only. Tach is for maintenance tracking (TBX) and is not billed.</small>
+            <label class="wide check-confirm">
+              <input type="checkbox" name="meters_confirmed" value="yes" required />
+              I read Hobbs and tach on the airplane's meters.
             </label>
             <div class="actions wide">
               <button class="btn amber" type="submit">Check out</button>
@@ -89,13 +140,33 @@ export function ReservationPage(props: {
           >
             <p class="wide muted">Hobbs out {formatMeter(entry.hobbsOut)} · Tach out {formatMeter(entry.tachOut)}</p>
             <label>
-              Hobbs in
-              <input name="hobbs_in" inputmode="decimal" required />
+              Hobbs in (required, billed)
+              <input name="hobbs_in" inputmode="decimal" pattern="\d{1,6}(\.\d)?" required placeholder={`more than ${formatMeter(entry.hobbsOut)}`} />
             </label>
             <label>
-              Tach in
-              <input name="tach_in" inputmode="decimal" required />
+              Tach in (required, maintenance only, not billed)
+              <input name="tach_in" inputmode="decimal" pattern="\d{1,6}(\.\d)?" required placeholder={`at least ${formatMeter(entry.tachOut)}`} />
             </label>
+            <small class="wide muted">Read both meters after shutdown. Hours with one decimal. Charges use Hobbs only. Tach is for maintenance tracking (TBX) and never changes the bill.</small>
+            <label>
+              Oil added (quarts)
+              <input name="oil_added_qt" inputmode="decimal" pattern="\d{1,2}(\.\d{1,2})?" placeholder="Blank if not recorded" aria-describedby="oil-hint" />
+            </label>
+            <label>
+              Fuel added (gallons)
+              <input name="fuel_added_gal" inputmode="decimal" pattern="\d{1,4}(\.\d{1,2})?" placeholder="Blank if not recorded" aria-describedby="fuel-hint" />
+            </label>
+            <small id="oil-hint" class="wide muted">Optional. Use 0 if none was added. Leave blank if it was not recorded. Oil and fuel do not change the Hobbs bill.</small>
+            <small id="fuel-hint" class="wide muted">Fuel is US gallons. Use 0 if none was added. Leave blank if it was not recorded.</small>
+            {entry.instructorId ? (
+              <label>
+                Ground instruction (hours)
+                <input name="ground_hours" inputmode="decimal" pattern="\d{1,2}(\.\d{1,2})?" placeholder="0 if none" aria-describedby="ground-hint" />
+              </label>
+            ) : null}
+            {entry.instructorId ? (
+              <small id="ground-hint" class="wide muted">Optional. Leave blank or enter 0 if no ground was given. Ground uses this flight's instructor rate ({formatMoney(estimateRate)}/hr), the same rate as flight instruction. It does not change the aircraft Hobbs charge.</small>
+            ) : null}
             <p id="checkin-estimate" class="wide estimate">Enter Hobbs in to preview the cost.</p>
             <div class="actions wide">
               <button class="btn" type="submit">Check in and bill</button>
@@ -122,6 +193,17 @@ export function ReservationPage(props: {
         </section>
       ) : null}
     </Layout>
+  );
+}
+
+function InsuranceFlagNotice(props: { flag: { pilotName: string; date: string | null; source: ExpirationSource | null } }) {
+  const today = todayInZone();
+  const { flag } = classifyExpiration(props.flag.date, today);
+  const tone = flag === "expired" ? "alert" : flag === "current" ? "muted" : "alert warn";
+  return (
+    <p class={tone} id="insurance-expiration" role={flag === "current" ? "status" : "alert"}>
+      {insuranceFlagMessage({ ...props.flag, today })}
+    </p>
   );
 }
 
