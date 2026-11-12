@@ -48,6 +48,7 @@ export function FlightRecordPage(props: { viewer: Viewer; usingDevSecret: boolea
           <div><dt>Ground</dt><dd>{recordedHours(log.groundHours)}</dd></div>
           <div><dt>Fuel added</dt><dd>{formatFuel(log.fuelAddedGal)}</dd></div>
           <div><dt>Oil added</dt><dd>{formatOil(log.oilAddedQt)}</dd></div>
+          {log.notes ? <div><dt>Notes / route</dt><dd class="notes">{log.notes}</dd></div> : null}
           {log.maintenanceFlight ? <div><dt>Maintenance</dt><dd>Recorded as a maintenance flight.</dd></div> : null}
         </dl>
         <p class="bill-pay">

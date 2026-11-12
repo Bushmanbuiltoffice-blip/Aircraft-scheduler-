@@ -32,6 +32,8 @@ export const NOTICES: Record<string, string> = {
   "agreement-signed": "Rental agreement signed and saved.",
   "agreement-guardian": "Your signature is saved. The agreement is not complete until a parent or legal guardian signs separately.",
   "agreement-already-signed": "This agreement was already signed. The saved signature was not changed.",
+  "past-flight-saved": "Past flight recorded. The airplane's current Hobbs and tach were not changed.",
+  "past-flight-overlap": "Past flight recorded. Another flight is already on that date for this aircraft or these people. This one was still saved.",
 };
 
 /** Shown at solo check-out when the pilot has no insurance PDF. Presence of a PDF is the whole requirement. */

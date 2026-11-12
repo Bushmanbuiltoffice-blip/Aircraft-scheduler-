@@ -68,9 +68,11 @@ import {
   zonedTimeToUtc,
 } from "./time";
 import type { Aircraft, AppEnv, MaintenanceBlock, RateBasis, ReservationStatus, ScheduleEntry, User } from "./types";
+import { registerPastFlights } from "./routes_past_flight";
 import { ORG_NAME, TIME_ZONE } from "./types";
 
 export function registerSchedule(app: Hono<AppEnv>): void {
+  registerPastFlights(app);
   app.get("/", async (c) => {
     const user = mustUser(c);
     const now = new Date();

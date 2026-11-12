@@ -19,7 +19,9 @@ export function LogsPage(props: {
 }) {
   return (
     <Layout title="Flight logs" user={props.viewer} path={props.path} usingDevSecret={props.usingDevSecret}>
-      <PageHead title="Flight logs" lede="Hobbs, tach, fuel, oil, and the amount billed at check-in. Fuel or oil left blank stays Not recorded, and 0 means none was added. New rentals start Unpaid until an admin or instructor marks them Paid. A row marked billed outside the app was already paid and is not on a balance." />
+      <PageHead title="Flight logs" lede="Hobbs, tach, fuel, oil, and the amount billed at check-in. Fuel or oil left blank stays Not recorded, and 0 means none was added. New rentals start Unpaid until an admin or instructor marks them Paid. A row marked billed outside the app was already paid and is not on a balance.">
+        {props.viewer.role === "admin" ? <a class="btn" href="/logs/new">Add past flight</a> : null}
+      </PageHead>
       {props.viewer.role === "admin" ? (
         <form class="toolbar" method="get" action="/logs">
           <label>
@@ -78,6 +80,7 @@ export function LogDetailPage(props: {
           <div><dt>Hobbs</dt><dd>{formatMeter(log.hobbsOut)} → {formatMeter(log.hobbsIn)}</dd></div>
           <div><dt>Tach (maintenance, not billed)</dt><dd>{formatMeter(log.tachOut)} → {formatMeter(log.tachIn)}</dd></div>
           <div><dt>Oil added</dt><dd>{formatOil(log.oilAddedQt)}</dd></div>
+          {log.notes ? <div><dt>Notes / route</dt><dd class="notes">{log.notes}</dd></div> : null}
           <div><dt>Fuel added</dt><dd>{formatFuel(log.fuelAddedGal)}</dd></div>
           {log.billingStatus === "external" ? null : (
             <div><dt>Ground instruction</dt><dd>{log.groundCostCents == null ? (log.groundHours == null ? "Not recorded" : `${formatGroundHours(log.groundHours)} hr on the record, no ground charge`) : `${formatGroundHours(log.groundHours ?? 0)} hr · ${formatMoney(log.groundCostCents)}`}</dd></div>

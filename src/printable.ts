@@ -88,6 +88,7 @@ export function flightRecordLines(log: FlightLogView): string[] {
     `Ground: ${ground(log.groundHours)}`,
     `Fuel added: ${formatFuel(log.fuelAddedGal)}`,
     `Oil added: ${formatOil(log.oilAddedQt)}`,
+    ...(log.notes ? [`Notes / route: ${log.notes}`] : []),
     ...(log.maintenanceFlight ? ["Recorded as a maintenance flight."] : []),
     external
       ? `${log.billingNote ?? BILLED_OUTSIDE_LABEL} This page is not an invoice.`

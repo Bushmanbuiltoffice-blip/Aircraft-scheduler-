@@ -986,6 +986,135 @@ export async function checkInReservation(db: D1Database, log: FlightLogInsert): 
   return saved != null;
 }
 
+export type PastFlightRow = {
+  reservationId: string;
+  logId: string;
+  aircraftId: string;
+  pilotId: string;
+  instructorId: string | null;
+  startsAt: string;
+  endsAt: string;
+  hobbsOut: number;
+  hobbsIn: number;
+  tachOut: number;
+  tachIn: number;
+  flightHours: number;
+  aircraftRateCents: number;
+  aircraftCostCents: number;
+  instructorRateCents: number;
+  instructorHours: number;
+  instructorCostCents: number;
+  groundHours: number | null;
+  groundRateCents: number | null;
+  groundCostCents: number | null;
+  totalCostCents: number;
+  oilAddedQt: number | null;
+  fuelAddedGal: number | null;
+  notes: string | null;
+  billingStatus: "in_app" | "external";
+  billingNote: string | null;
+  createdBy: string;
+};
+
+/** Writes a completed flight without moving the airplane's current Hobbs or tach, and without writing TBX. */
+export async function insertPastFlight(db: D1Database, row: PastFlightRow): Promise<void> {
+  const now = new Date().toISOString();
+  await db.batch([
+    db
+      .prepare(
+        `INSERT INTO reservations (
+           id, aircraft_id, pilot_id, instructor_id, starts_at, ends_at, status, rate_basis,
+           hobbs_out, tach_out, hobbs_in, tach_in, notes, created_by, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, 'checked_in', 'wet', ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        row.reservationId,
+        row.aircraftId,
+        row.pilotId,
+        row.instructorId,
+        row.startsAt,
+        row.endsAt,
+        row.hobbsOut,
+        row.tachOut,
+        row.hobbsIn,
+        row.tachIn,
+        row.notes,
+        row.createdBy,
+        now,
+        now,
+      ),
+    db
+      .prepare(
+        `INSERT INTO flight_logs (
+           id, reservation_id, pilot_id, instructor_id, aircraft_id,
+           hobbs_out, hobbs_in, tach_out, tach_in, flight_hours,
+           aircraft_rate_cents, aircraft_cost_cents, instructor_rate_cents,
+           instructor_hours, instructor_cost_cents, total_cost_cents, rate_basis, created_at,
+           oil_added_qt, fuel_added_gal, ground_hours, ground_rate_cents, ground_cost_cents,
+           billing_status, billing_note, imported, paid
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'wet', ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`,
+      )
+      .bind(
+        row.logId,
+        row.reservationId,
+        row.pilotId,
+        row.instructorId,
+        row.aircraftId,
+        row.hobbsOut,
+        row.hobbsIn,
+        row.tachOut,
+        row.tachIn,
+        row.flightHours,
+        row.aircraftRateCents,
+        row.aircraftCostCents,
+        row.instructorRateCents,
+        row.instructorHours,
+        row.instructorCostCents,
+        row.totalCostCents,
+        row.startsAt,
+        row.oilAddedQt,
+        row.fuelAddedGal,
+        row.groundHours,
+        row.groundRateCents,
+        row.groundCostCents,
+        row.billingStatus,
+        row.billingNote,
+      ),
+  ]);
+}
+
+/** Another non-cancelled flight on the same Pacific date for this airplane or these people. */
+export async function pastFlightOverlap(
+  db: D1Database,
+  input: { dayStartIso: string; dayEndIso: string; aircraftId: string; pilotId: string; instructorId: string | null },
+): Promise<boolean> {
+  const row = await db
+    .prepare(
+      `SELECT r.id FROM reservations r
+       WHERE r.status != 'cancelled'
+         AND r.starts_at < ? AND r.ends_at > ?
+         AND (
+           r.aircraft_id = ?
+           OR r.pilot_id = ?
+           OR r.instructor_id = ?
+           OR (? IS NOT NULL AND (r.pilot_id = ? OR r.instructor_id = ?))
+         )
+       LIMIT 1`,
+    )
+    .bind(
+      input.dayEndIso,
+      input.dayStartIso,
+      input.aircraftId,
+      input.pilotId,
+      input.pilotId,
+      input.instructorId,
+      input.instructorId,
+      input.instructorId,
+    )
+    .first<{ id: string }>();
+  return row != null;
+}
+
 const FLIGHT_LOG_SELECT = `
   f.id, f.reservation_id, f.pilot_id, f.instructor_id, f.aircraft_id,
   f.hobbs_out, f.hobbs_in, f.tach_out, f.tach_in, f.flight_hours,
@@ -996,17 +1125,23 @@ const FLIGHT_LOG_SELECT = `
   f.fuel_added_gal, f.oil_added_qt, f.rental_type, f.imported,
   f.instructor_name AS guest_instructor_name, f.billing_status, f.billing_note,
   f.paid, f.paid_at, f.paid_by, (SELECT name FROM users WHERE id = f.paid_by) AS paid_by_name,
-  p.name AS pilot_name, p.role AS pilot_role, i.name AS linked_instructor_name, a.tail_number, a.make, a.model
+  p.name AS pilot_name, p.role AS pilot_role, i.name AS linked_instructor_name, a.tail_number, a.make, a.model,
+  rsv.notes AS flight_notes
+`;
+
+const FLIGHT_LOG_FROM = `
+  FROM flight_logs f
+  JOIN users p ON p.id = f.pilot_id
+  LEFT JOIN users i ON i.id = f.instructor_id
+  JOIN aircraft a ON a.id = f.aircraft_id
+  LEFT JOIN reservations rsv ON rsv.id = f.reservation_id
 `;
 
 export async function getFlightLogByReservation(db: D1Database, reservationId: string): Promise<FlightLogView | null> {
   const row = await db
     .prepare(
       `SELECT ${FLIGHT_LOG_SELECT}
-       FROM flight_logs f
-       JOIN users p ON p.id = f.pilot_id
-       LEFT JOIN users i ON i.id = f.instructor_id
-       JOIN aircraft a ON a.id = f.aircraft_id
+       ${FLIGHT_LOG_FROM}
        WHERE f.reservation_id = ?`,
     )
     .bind(reservationId)
@@ -1018,10 +1153,7 @@ export async function getFlightLog(db: D1Database, id: string): Promise<FlightLo
   const row = await db
     .prepare(
       `SELECT ${FLIGHT_LOG_SELECT}
-       FROM flight_logs f
-       JOIN users p ON p.id = f.pilot_id
-       LEFT JOIN users i ON i.id = f.instructor_id
-       JOIN aircraft a ON a.id = f.aircraft_id
+       ${FLIGHT_LOG_FROM}
        WHERE f.id = ?`,
     )
     .bind(id)
@@ -1055,10 +1187,7 @@ export async function listFlightLogs(
   const { results } = await db
     .prepare(
       `SELECT ${FLIGHT_LOG_SELECT}
-       FROM flight_logs f
-       JOIN users p ON p.id = f.pilot_id
-       LEFT JOIN users i ON i.id = f.instructor_id
-       JOIN aircraft a ON a.id = f.aircraft_id
+       ${FLIGHT_LOG_FROM}
        ${where}
        ORDER BY f.created_at DESC
        LIMIT ?`,
@@ -1102,6 +1231,7 @@ type FlightLogRow = {
   guest_instructor_name: string | null;
   billing_status: string;
   billing_note: string | null;
+  flight_notes: string | null;
   paid: number | null;
   paid_at: string | null;
   paid_by: string | null;
@@ -1151,6 +1281,7 @@ function mapFlightLog(row: FlightLogRow): FlightLogView {
     guestInstructorName,
     billingStatus,
     billingNote: row.billing_note,
+    notes: row.flight_notes,
     paid: billingStatus === "in_app" && row.paid === 1,
     paidAt: row.paid_at,
     paidBy: row.paid_by,

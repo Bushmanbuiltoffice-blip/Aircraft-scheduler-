@@ -145,6 +145,8 @@ export interface FlightLog {
   guestInstructorName: string | null;
   billingStatus: BillingStatus;
   billingNote: string | null;
+  /** Route or other note saved with the flight. Null when none was entered. */
+  notes: string | null;
   /** Cash or check saved on the aircraft bill. Null means no choice has been recorded. */
   aircraftPaymentMethod: "cash" | "check" | null;
   /** Cash or check saved on the instructor bill, which includes ground. Null means no choice. */
